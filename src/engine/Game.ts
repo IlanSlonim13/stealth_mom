@@ -774,6 +774,15 @@ export class Game {
     const head = addMesh(new THREE.SphereGeometry(0.13, 8, 8), "#F5D0B0", headY);
     this.momHead = head;
 
+    // Eyes (on +Z face so they face movement direction)
+    const eyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
+    const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), eyeMat);
+    eyeL.position.set(-0.045, headY + 0.02, 0.11);
+    g.add(eyeL);
+    const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), eyeMat);
+    eyeR.position.set(0.045, headY + 0.02, 0.11);
+    g.add(eyeR);
+
     // Hair
     const hairMat = new THREE.MeshToonMaterial({ color: "#4A2820" });
     switch (outfit.hair) {
@@ -943,6 +952,16 @@ export class Game {
         new THREE.MeshToonMaterial({ color: "#F5D8C0" }));
       h2.position.y = 0.42; h2.castShadow = true;
       group.add(h2);
+
+      // Eyes (on +Z face so they face movement direction)
+      const tEyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
+      const tEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), tEyeMat);
+      tEyeL.position.set(-0.06, 0.44, 0.13);
+      group.add(tEyeL);
+      const tEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), tEyeMat);
+      tEyeR.position.set(0.06, 0.44, 0.13);
+      group.add(tEyeR);
+
       const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4),
         new THREE.MeshToonMaterial({ color: "#DEB887" }));
       tuft.position.y = 0.58;
@@ -982,6 +1001,15 @@ export class Game {
         new THREE.MeshToonMaterial({ color: "#E8C8A0" }));
       h3.position.y = 0.7; h3.castShadow = true;
       group.add(h3);
+
+      // Eyes (on +Z face so they face movement direction)
+      const hEyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
+      const hEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), hEyeMat);
+      hEyeL.position.set(-0.05, 0.72, 0.12);
+      group.add(hEyeL);
+      const hEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), hEyeMat);
+      hEyeR.position.set(0.05, 0.72, 0.12);
+      group.add(hEyeR);
 
       const coneLen2 = HUSBAND_CONE_RANGE * TILE_SIZE;
       const coneW2 = Math.tan(HUSBAND_CONE_ANGLE / 2) * coneLen2;
@@ -1287,7 +1315,10 @@ export class Game {
 
       npc.group.position.set((npc.pos.x - this.cx) * TILE_SIZE, TILE_H, (npc.pos.z - this.cz) * TILE_SIZE);
       if (npc.type === "toddler") {
+        npc.group.rotation.y = npc.facing;
         npc.group.rotation.z = Math.sin(this.frame * 0.15) * 0.08;
+      } else if (npc.type === "husband") {
+        npc.group.rotation.y = npc.facing;
       }
       if (npc.coneMesh) {
         npc.coneMesh.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.04, (npc.pos.z - this.cz) * TILE_SIZE);
