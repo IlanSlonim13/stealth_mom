@@ -308,47 +308,79 @@ export class Game {
     const artColors = ["#D4A0A0", "#A0C4D4", "#D4D4A0", "#C4A0D4", "#A0D4B4"];
     let artCounter = 0;
 
-    // Opaque wall material
+    // Opaque wall material (for non-hiding walls)
     const wallMatOpaque = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.85 });
-    // Transparent wall material (south/east faces — camera-facing)
-    const wallMatTransp = new THREE.MeshStandardMaterial({
-      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.15,
+    // Split-panel materials for walls that hide tiles behind them
+    const wallMatBottom = new THREE.MeshStandardMaterial({
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.35, depthWrite: false,
+    });
+    const wallMatTop = new THREE.MeshStandardMaterial({
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.1, depthWrite: false,
     });
     const baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.9 });
+
+    // Split dimensions: wall total height = 1.5
+    const bottomH = 0.5;
+    const topH = 1.0;
 
     for (const wallKey of this.allWallSet) {
       const [wx, wz] = wallKey.split(",").map(Number);
 
-      // [neighborX, neighborZ, worldOffX, worldOffZ, rotY, facingCamera]
-      // Camera is at (+X, +Y, +Z). South (z=max) and East (x=max) walls are closest to camera.
-      // Their interior panels are the NORTH face (oz<0) and WEST face (ox<0) → make transparent.
-      const faces: [number, number, number, number, number, boolean][] = [
-        [wx,     wz - 1,  0,             -TS * 0.46,  0,              true ],  // north face → transparent (south wall interior)
-        [wx,     wz + 1,  0,             +TS * 0.46,  Math.PI,        false],  // south face → opaque (north wall interior)
-        [wx - 1, wz,     -TS * 0.46,     0,           Math.PI / 2,    true ],  // west face → transparent (east wall interior)
-        [wx + 1, wz,     +TS * 0.46,     0,          -Math.PI / 2,   false],  // east face → opaque (west wall interior)
+      // Does this wall hide tiles from camera? Camera is at (+X, +Y, +Z).
+      // Tiles at lower (x + z) are further from camera → hidden behind this wall.
+      // Check north (wz-1) and west (wx-1) neighbors for non-wall tiles.
+      const hidesAnyTile = [
+        [wx, wz - 1],
+        [wx - 1, wz],
+      ].some(([nx, nz]) =>
+        nx >= 0 && nx < W && nz >= 0 && nz < H && !this.allWallSet.has(`${nx},${nz}`)
+      );
+
+      // [neighborX, neighborZ, worldOffX, worldOffZ, rotY]
+      const faces: [number, number, number, number, number][] = [
+        [wx,     wz - 1,  0,             -TS * 0.46,  0            ],  // north face
+        [wx,     wz + 1,  0,             +TS * 0.46,  Math.PI      ],  // south face
+        [wx - 1, wz,     -TS * 0.46,     0,           Math.PI / 2  ],  // west face
+        [wx + 1, wz,     +TS * 0.46,     0,          -Math.PI / 2  ],  // east face
       ];
 
-      for (const [nx, nz, ox, oz, rotY, facingCam] of faces) {
+      for (const [nx, nz, ox, oz, rotY] of faces) {
         if (nx < 0 || nx >= W || nz < 0 || nz >= H) continue;
         if (this.allWallSet.has(`${nx},${nz}`)) continue;
 
         const wx3 = (wx - this.cx) * TS;
         const wz3 = (wz - this.cz) * TS;
 
-        const wallMat = facingCam ? wallMatTransp : wallMatOpaque;
+        if (hidesAnyTile) {
+          // Split into two segments: semi-opaque bottom + transparent top
+          const panelBottom = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, bottomH, 0.06),
+            wallMatBottom,
+          );
+          panelBottom.position.set(wx3 + ox, TILE_H + bottomH / 2, wz3 + oz);
+          panelBottom.rotation.y = rotY;
+          panelBottom.renderOrder = 1;
+          this.scene.add(panelBottom);
 
-        // Tall wall panel — 1.5 world units high
-        const panel = new THREE.Mesh(
-          new THREE.BoxGeometry(0.92 * TS, 1.5, 0.06),
-          wallMat,
-        );
-        panel.position.set(wx3 + ox, TILE_H + 0.75, wz3 + oz);
-        panel.rotation.y = rotY;
-        this.scene.add(panel);
+          const panelTop = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, topH, 0.06),
+            wallMatTop,
+          );
+          panelTop.position.set(wx3 + ox, TILE_H + bottomH + topH / 2, wz3 + oz);
+          panelTop.rotation.y = rotY;
+          panelTop.renderOrder = 1;
+          this.scene.add(panelTop);
+        } else {
+          // Fully opaque wall panel with decorations
+          const panel = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, 1.5, 0.06),
+            wallMatOpaque,
+          );
+          panel.position.set(wx3 + ox, TILE_H + 0.75, wz3 + oz);
+          panel.rotation.y = rotY;
+          this.scene.add(panel);
 
-        // Baseboard
-        if (!facingCam) {
+          // Baseboard
           const base = new THREE.Mesh(
             new THREE.BoxGeometry(0.92 * TS, 0.06, 0.07),
             baseMat,
