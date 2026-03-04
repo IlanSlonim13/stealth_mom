@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stealth Mom — Camera Diagnostic</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; color: #0f0; font-family: monospace; overflow: hidden; }
+    #canvas-wrap { position: fixed; inset: 0; }
+    #log {
+      position: fixed; top: 8px; left: 8px;
+      background: rgba(0,0,0,0.75); padding: 8px 12px;
+      font-size: 12px; line-height: 1.6;
+      max-width: 480px; border: 1px solid #0f0;
+      z-index: 10; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-wrap"></div>
+  <div id="log">Loading Three.js…</div>
+
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js" } }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const logEl = document.getElementById('log');
+    const lines = [];
+    function log(msg) {
+      lines.push(msg);
+      logEl.textContent = lines.join('\n');
+      console.log(msg);
+    }
+
+    log('Three.js loaded: ' + THREE.REVISION);
+
+    const wrap = document.getElementById('canvas-wrap');
+    const W = wrap.clientWidth;
+    const H = wrap.clientHeight;
+    log(`Viewport: ${W} x ${H}`);
+
+    // Same frustum math as Game.ts (level size 9x9 → frust = 9*0.65 ≈ 5.85)
+    const LEVEL_W = 9, LEVEL_H = 9;
+    const frust = Math.max(LEVEL_W, LEVEL_H) * 0.65;
+    const aspect = W / H;
+    log(`frust: ${frust.toFixed(3)}, aspect: ${aspect.toFixed(3)}`);
+    log(`frustum L/R: ${(-frust*aspect).toFixed(2)} / ${(frust*aspect).toFixed(2)}`);
+    log(`frustum T/B: ${frust.toFixed(2)} / ${(-frust).toFixed(2)}`);
+
+    // Scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#4a7c59');
+
+    // Camera — same as Game.ts fix: position + lookAt, no manual Euler
+    const camera = new THREE.OrthographicCamera(
+      -frust * aspect, frust * aspect, frust, -frust, 0.1, 100
+    );
+    camera.position.set(15, 15, 15);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    log(`Camera pos: ${camera.position.toArray().map(v=>v.toFixed(1)).join(', ')}`);
+    log(`Camera quat: ${[...camera.quaternion].map(v=>v.toFixed(3)).join(', ')}`);
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    wrap.appendChild(renderer.domElement);
+    log('Renderer created');
+
+    // Lights
+    scene.add(new THREE.AmbientLight('#fff', 0.5));
+    const dLight = new THREE.DirectionalLight('#fff', 0.8);
+    dLight.position.set(10, 18, 10);
+    scene.add(dLight);
+
+    // Floor grid (5x5 tiles centred near origin)
+    const COLORS = ['#6aaa7a', '#5a9a6a'];
+    for (let x = 0; x < 5; x++) {
+      for (let z = 0; z < 5; z++) {
+        const geo = new THREE.BoxGeometry(0.95, 0.1, 0.95);
+        const mat = new THREE.MeshLambertMaterial({ color: COLORS[(x+z)%2] });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(x - 2, 0, z - 2);
+        scene.add(mesh);
+      }
+    }
+
+    // Coloured reference boxes at origin
+    const boxes = [
+      { color: '#ff4444', pos: [0, 0.5, 0] },   // red centre
+      { color: '#4444ff', pos: [2, 0.5, 0] },    // blue +X
+      { color: '#ffff00', pos: [0, 0.5, 2] },    // yellow +Z
+      { color: '#ff00ff', pos: [-2, 0.5, 0] },   // magenta -X
+    ];
+    boxes.forEach(({ color, pos }) => {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 1, 0.6),
+        new THREE.MeshLambertMaterial({ color })
+      );
+      mesh.position.set(...pos);
+      scene.add(mesh);
+    });
+
+    log(`Scene children: ${scene.children.length}`);
+    log('--- Rendering ---');
+    log('RED box = origin, BLUE = +X, YELLOW = +Z, MAGENTA = -X');
+
+    // Render loop
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Resize handler
+    window.addEventListener('resize', () => {
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      if (w === 0 || h === 0) return;
+      const a = w / h;
+      camera.left = -frust * a;
+      camera.right = frust * a;
+      camera.top = frust;
+      camera.bottom = -frust;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    });
+  </script>
+</body>
+</html>
