@@ -1980,12 +1980,19 @@ export class Game {
     const hairMat = new THREE.MeshToonMaterial({ color: "#4A2820" });
     switch (outfit.hair) {
       case "ponytail": {
-        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), hairMat);
-        bun.position.set(-0.08, headY + 0.03, 0);
+        // Hair cap on top
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.135, 8, 4), hairMat);
+        cap.scale.y = 0.45;
+        cap.position.set(0, headY + 0.06, -0.02);
+        g.add(cap);
+        // Tie point at back of head
+        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), hairMat);
+        bun.position.set(0, headY - 0.02, -0.12);
         g.add(bun);
-        const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.02, 0.2, 4), hairMat);
-        tail.position.set(-0.15, headY - 0.07, 0);
-        tail.rotation.z = Math.PI / 3;
+        // Ponytail hanging down from back of head
+        const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.02, 0.3, 5), hairMat);
+        tail.position.set(0, headY - 0.17, -0.14);
+        tail.rotation.x = 0.3;
         g.add(tail);
         break;
       }
@@ -2004,15 +2011,21 @@ export class Game {
       case "down": {
         const cap = new THREE.Mesh(new THREE.SphereGeometry(0.135, 8, 4), hairMat);
         cap.scale.y = 0.5;
-        cap.position.set(0, headY + 0.06, 0);
+        cap.position.set(0, headY + 0.06, -0.02);
         g.add(cap);
-        const drapeL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.25, 4), hairMat);
-        drapeL.position.set(-0.14, headY - 0.1, 0);
-        drapeL.rotation.z = 0.25;
+        // Back drape (longest)
+        const drapeBack = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.03, 0.3, 5), hairMat);
+        drapeBack.position.set(0, headY - 0.12, -0.1);
+        drapeBack.rotation.x = 0.2;
+        g.add(drapeBack);
+        // Side drapes
+        const drapeL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.28, 4), hairMat);
+        drapeL.position.set(-0.12, headY - 0.12, -0.04);
+        drapeL.rotation.z = 0.2;
         g.add(drapeL);
-        const drapeR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.25, 4), hairMat);
-        drapeR.position.set(0.14, headY - 0.1, 0);
-        drapeR.rotation.z = -0.25;
+        const drapeR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.28, 4), hairMat);
+        drapeR.position.set(0.12, headY - 0.12, -0.04);
+        drapeR.rotation.z = -0.2;
         g.add(drapeR);
         break;
       }
