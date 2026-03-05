@@ -83,42 +83,46 @@ export const LEVELS: LevelData[] = [
       // Lamp behind the couch on the left
       { x:6,  z:12, w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
 
-      // NORTH WALL — bookcase + windows + pictures
+      // NORTH WALL — bookcase + pictures
       { x:4,  z:2,  w:4, h:4, label:"bookcase",       col:"#8B5A2B", shape:"bookcase"            },
-      { x:10, z:2,  w:4, h:4, label:"window1",        col:"#A8D8EA", shape:"window"              },
       { x:16, z:2,  w:4, h:4, label:"pictureFrame1",  col:"#5A8A6A", shape:"pictureFrame"        },
-      { x:22, z:2,  w:4, h:4, label:"window2",        col:"#A8D8EA", shape:"window"              },
 
-      // LEFT WALL — shelf (decoy) + window
+      // LEFT WALL — shelf (decoy)
       { x:4,  z:8,  w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
 
       // RIGHT SIDE — flower vase between ottoman and wall
       { x:24, z:10, w:4, h:4, label:"flowerVase1",    col:"#B0C4DE", shape:"flowerVase"          },
       { x:24, z:18, w:4, h:4, label:"pictureFrame3",  col:"#8A6A5A", shape:"pictureFrame"        },
 
-      // SOUTH AREA — reading corner + windows + decor
+      // SOUTH AREA — reading corner + decor
       { x:4,  z:22, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
       { x:10, z:24, w:4, h:4, label:"pictureFrame2",  col:"#8A5A4A", shape:"pictureFrame"        },
       { x:4,  z:28, w:4, h:4, label:"readingLamp",    col:"#D4AF37", shape:"lamp"                },
-      { x:10, z:28, w:4, h:4, label:"window3",        col:"#A8D8EA", shape:"window"              },
       { x:16, z:28, w:4, h:4, label:"plant2",         col:"#4A7A4A", shape:"plant"               },
-
-      // LEFT WALL windows
-      { x:2,  z:14, w:2, h:4, label:"windowL1",       col:"#A8D8EA", shape:"window"              },
-      { x:2,  z:24, w:2, h:4, label:"windowL2",       col:"#A8D8EA", shape:"window"              },
 
       // Door at interior wall doorway (z=14..17, x=28)
       { x:28, z:14, w:1, h:4, label:"door1",          col:"#8B6F5C", shape:"door"                },
 
       // ─── Hallway (x=29..41) ───
       { x:32, z:4,  w:4, h:4, label:"hallPlant",      col:"#4A7A4A", shape:"plant"               },
-      { x:38, z:4,  w:4, h:4, label:"hallWindow1",    col:"#A8D8EA", shape:"window"              },
       { x:32, z:12, w:4, h:4, label:"hallRugDecor",   col:"#8B7060", shape:"rugDecor"            },
       { x:38, z:12, w:4, h:4, label:"coatRack1",      col:"#5A3A20", shape:"coatRack"            },
       { x:32, z:20, w:4, h:4, label:"table",          col:"#5C3A1E", shape:"table"               },
-      { x:38, z:20, w:4, h:4, label:"hallWindow2",    col:"#A8D8EA", shape:"window"              },
       { x:32, z:28, w:4, h:4, label:"hallToys",       col:"#E06040", shape:"toys"                },
       { x:38, z:28, w:4, h:4, label:"hallLamp",       col:"#D4AF37", shape:"lamp"                },
+    ],
+    // Windows integrated into walls
+    windowWalls: [
+      // North wall (z=1) — living room windows
+      [10,1],[11,1],[12,1],  [20,1],[21,1],[22,1],
+      // North wall — hallway window
+      [36,1],[37,1],[38,1],
+      // West wall (x=1) — living room windows
+      [1,12],[1,13],[1,14],  [1,22],[1,23],[1,24],
+      // East wall (x=42) — hallway windows
+      [42,8],[42,9],[42,10],  [42,20],[42,21],[42,22],
+      // South wall (z=34) — living room windows
+      [10,34],[11,34],[12,34],  [20,34],[21,34],[22,34],
     ],
     rug: { x:8, z:10, w:14, h:10 },
     playerStart: { x:36, z:24 },
@@ -216,21 +220,16 @@ export const LEVELS: LevelData[] = [
       { x:4, z:14, w:4, h:4, label:"bedroomLamp",  col:"#D4AF37", shape:"lamp"              },
       { x:12, z:16, w:4, h:4, label:"laundry",      col:"#E8D8C0", shape:"laundryBasket"     },
       { x:4, z:28, w:4, h:4, label:"bedroomRug",   col:"#8B6F5C", shape:"ottoman"           },
-      // Bedroom extras: nightstands, windows, picture
+      // Bedroom extras: nightstands, picture
       { x:4, z:12, w:4, h:2, label:"nightstand1",  col:"#8B6914", shape:"nightstand"         },
-      { x:12, z:4, w:4, h:4, label:"bedroomWin1",  col:"#A8D8EA", shape:"window"             },
       { x:12, z:8, w:4, h:4, label:"bedroomPicture",col:"#7A6A9A", shape:"pictureFrame"      },
-      { x:10, z:28, w:4, h:4, label:"bedroomWin2",  col:"#A8D8EA", shape:"window"            },
       { x:8, z:20, w:4, h:4, label:"bedroomFlower", col:"#E8A0C0", shape:"flowerVase"        },
-      // Bedroom left wall window
-      { x:2, z:20, w:2, h:4, label:"bedroomWinL",  col:"#A8D8EA", shape:"window"             },
       // Door: bedroom → hallway (x=16, doorway z=14..17)
       { x:16, z:14, w:1, h:4, label:"bedroomDoor", col:"#8B6F5C", shape:"door"               },
       // --- Hallway (x=18..31, z=2..33) ---
       { x:20, z:8, w:4, h:4, label:"plant",        col:"#4A7A4A", shape:"plant"              },
       { x:20, z:24, w:4, h:4, label:"plant2",       col:"#4A7A4A", shape:"plant"              },
       { x:28, z:16, w:4, h:4, label:"hallToys",     col:"#E06040", shape:"toys"               },
-      { x:24, z:4, w:4, h:4, label:"hallWindow1",   col:"#A8D8EA", shape:"window"             },
       { x:20, z:28, w:4, h:4, label:"hallTable",    col:"#5C4A3A", shape:"sideTableGlass"     },
       { x:28, z:4, w:4, h:4, label:"hallClock",     col:"#C0C0C0", shape:"clock"              },
       { x:28, z:28, w:4, h:4, label:"hallCoatRack", col:"#5A3A20", shape:"coatRack"           },
@@ -244,7 +243,17 @@ export const LEVELS: LevelData[] = [
       { x:36, z:24, w:4, h:4, label:"bathSink",     col:"#D0D0D0", shape:"sink"              },
       { x:40, z:24, w:4, h:4, label:"toiletries1",  col:"#E8E0D8", shape:"toiletries"        },
       { x:36, z:28, w:4, h:4, label:"bathLamp",     col:"#D4AF37", shape:"lamp"              },
-      { x:40, z:28, w:4, h:4, label:"bathWindow1",  col:"#A8D8EA", shape:"window"            },
+    ],
+    // Windows integrated into walls
+    windowWalls: [
+      // North wall (z=1) — bedroom, hallway, bathroom
+      [8,1],[9,1],[10,1],  [24,1],[25,1],[26,1],  [40,1],[41,1],[42,1],
+      // West wall (x=1) — bedroom
+      [1,10],[1,11],[1,12],  [1,22],[1,23],[1,24],
+      // East wall (x=46) — bathroom
+      [46,10],[46,11],[46,12],  [46,24],[46,25],[46,26],
+      // South wall (z=34) — bedroom, hallway
+      [8,34],[9,34],[10,34],  [24,34],[25,34],[26,34],  [40,34],[41,34],[42,34],
     ],
     rug: null,
     playerStart: { x:8, z:16 },
@@ -352,11 +361,7 @@ export const LEVELS: LevelData[] = [
       { x:12, z:8, w:4, h:4, label:"microwave1",    col:"#888888", shape:"microwave"             },
       { x:4, z:16, w:8, h:4, label:"kitIsland",     col:"#7A6A5A", shape:"kitchenIsland"         },
       { x:14, z:16, w:4, h:4, label:"kitPlant",     col:"#4A7A4A", shape:"plant"                 },
-      { x:4, z:24, w:4, h:4, label:"kitWindow1",    col:"#A8D8EA", shape:"window"                },
       { x:12, z:24, w:4, h:4, label:"kitLamp",      col:"#D4AF37", shape:"lamp"                  },
-      { x:12, z:32, w:4, h:4, label:"kitWindow2",   col:"#A8D8EA", shape:"window"                },
-      // Left wall window
-      { x:2, z:20, w:2, h:4, label:"kitWinL",       col:"#A8D8EA", shape:"window"                },
       // Door: kitchen → dining (x=20, doorway z=10..13)
       { x:20, z:10, w:1, h:4, label:"kitDoor",      col:"#8B6F5C", shape:"door"                  },
       // --- Dining (x=22..35, z=2..37) ---
@@ -365,9 +370,7 @@ export const LEVELS: LevelData[] = [
       { x:28, z:28, w:4, h:4, label:"stool2",       col:"#8B6F5C", shape:"stool"                 },
       { x:32, z:12, w:4, h:4, label:"diningPlant",  col:"#4A7A4A", shape:"plant"                 },
       { x:32, z:28, w:4, h:4, label:"stool3",       col:"#8B6F5C", shape:"stool"                 },
-      // Dining extras: windows, flowers
-      { x:24, z:4, w:4, h:4, label:"diningWindow1", col:"#A8D8EA", shape:"window"                },
-      { x:28, z:4, w:4, h:4, label:"diningWindow2", col:"#A8D8EA", shape:"window"                },
+      // Dining extras: flowers
       { x:32, z:4, w:4, h:4, label:"diningFlower",  col:"#AA4466", shape:"flowerVase"            },
       { x:24, z:32, w:4, h:4, label:"diningLamp",   col:"#D4AF37", shape:"lamp"                  },
       { x:32, z:32, w:4, h:4, label:"diningRug",    col:"#A0B0A0", shape:"rugDecor"              },
@@ -378,7 +381,17 @@ export const LEVELS: LevelData[] = [
       { x:40, z:28, w:4, h:4, label:"pantryLamp",   col:"#D4AF37", shape:"lamp"                  },
       { x:40, z:4, w:4, h:4, label:"pantryShelf2",  col:"#8B5A2B", shape:"shelf"                 },
       { x:40, z:24, w:4, h:4, label:"pantryPlant",  col:"#4A7A4A", shape:"plant"                 },
-      { x:40, z:32, w:4, h:4, label:"pantryWindow1",col:"#A8D8EA", shape:"window"                },
+    ],
+    // Windows integrated into walls
+    windowWalls: [
+      // North wall (z=1) — kitchen, dining
+      [8,1],[9,1],[10,1],  [24,1],[25,1],[26,1],  [30,1],[31,1],[32,1],
+      // West wall (x=1) — kitchen
+      [1,12],[1,13],[1,14],  [1,24],[1,25],[1,26],
+      // East wall (x=46) — pantry
+      [46,10],[46,11],[46,12],  [46,24],[46,25],[46,26],
+      // South wall (z=38) — kitchen, dining, pantry
+      [8,38],[9,38],[10,38],  [24,38],[25,38],[26,38],  [40,38],[41,38],[42,38],
     ],
     rug: null,
     playerStart: { x:8, z:24 },
@@ -480,24 +493,18 @@ export const LEVELS: LevelData[] = [
       { x:4, z:4, w:4, h:4, label:"hallMirror",  col:"#C0D0E0", shape:"mirror"                },
       { x:8, z:4, w:4, h:4, label:"hallCoatRack", col:"#5A3A20", shape:"coatRack"              },
       { x:8, z:12, w:4, h:4, label:"hallPlant",   col:"#4A7A4A", shape:"plant"                 },
-      { x:4, z:32, w:4, h:4, label:"hallWindow1", col:"#A8D8EA", shape:"window"                },
       { x:8, z:28, w:4, h:4, label:"hallRugDecor", col:"#E8A0A0", shape:"rugDecor"             },
-      // Left wall window
-      { x:2, z:20, w:2, h:4, label:"hallWinL",    col:"#A8D8EA", shape:"window"                },
       // Door: hallway → playroom (x=12, doorway z=18..21)
       { x:12, z:18, w:1, h:4, label:"playDoor",   col:"#8B6F5C", shape:"door"                  },
       // --- Playroom (x=14..35, z=2..37) ---
       { x:16, z:8, w:4, h:4, label:"toybox",      col:"#E06040", shape:"toybox",  hasDecoy:true },
-      { x:24, z:4, w:4, h:4, label:"playWindow1", col:"#A8D8EA", shape:"window"                },
       { x:28, z:32, w:4, h:4, label:"playToys2",   col:"#E8A040", shape:"toys"                  },
       { x:16, z:32, w:4, h:4, label:"playLaundry", col:"#E8D8C0", shape:"laundryBasket"         },
       // Playroom extras
       { x:16, z:4, w:4, h:4, label:"playClock",    col:"#C0C0C0", shape:"clock"                 },
       { x:28, z:4, w:4, h:4, label:"playShelf",    col:"#C06040", shape:"shelf"                 },
-      { x:32, z:4, w:4, h:4, label:"playWindow2",  col:"#A8D8EA", shape:"window"                },
       { x:16, z:28, w:4, h:4, label:"playPlant",   col:"#4A7A4A", shape:"plant"                 },
       { x:32, z:28, w:4, h:4, label:"playLamp",    col:"#D4AF37", shape:"lamp"                  },
-      { x:24, z:32, w:4, h:4, label:"playWindow3", col:"#A8D8EA", shape:"window"                },
       { x:32, z:32, w:4, h:4, label:"playFlower",  col:"#FF6B8A", shape:"flowerVase"            },
       // Door: playroom → study (x=36, doorway z=18..21)
       { x:36, z:18, w:1, h:4, label:"studyDoor",  col:"#8B6F5C", shape:"door"                  },
@@ -506,9 +513,18 @@ export const LEVELS: LevelData[] = [
       { x:40, z:16, w:4, h:4, label:"desk",        col:"#8B6914", shape:"desk"                  },
       { x:40, z:24, w:4, h:4, label:"studyPlant",  col:"#4A7A4A", shape:"plant"                 },
       { x:40, z:28, w:4, h:4, label:"studyLamp",   col:"#D4AF37", shape:"lamp"                  },
-      { x:40, z:32, w:4, h:4, label:"studyWindow1",col:"#A8D8EA", shape:"window"                },
-      { x:44, z:16, w:4, h:4, label:"studyWindow2",col:"#A8D8EA", shape:"window"                },
       { x:44, z:28, w:4, h:4, label:"studyShelf",  col:"#8B5A2B", shape:"shelf"                 },
+    ],
+    // Windows integrated into walls
+    windowWalls: [
+      // North wall (z=1) — hallway, playroom, study
+      [6,1],[7,1],[8,1],  [20,1],[21,1],[22,1],  [30,1],[31,1],[32,1],  [42,1],[43,1],[44,1],
+      // West wall (x=1) — hallway
+      [1,12],[1,13],[1,14],  [1,28],[1,29],[1,30],
+      // East wall (x=46) — study
+      [46,10],[46,11],[46,12],  [46,24],[46,25],[46,26],
+      // South wall (z=38) — hallway, playroom, study
+      [6,38],[7,38],[8,38],  [20,38],[21,38],[22,38],  [30,38],[31,38],[32,38],  [42,38],[43,38],[44,38],
     ],
     rug: { x:16, z:12, w:20, h:16 },
     playerStart: { x:4, z:20 },
@@ -623,7 +639,6 @@ export const LEVELS: LevelData[] = [
       // --- Kitchen (x=2..19, z=2..45) ---
       { x:4, z:8, w:8, h:4, label:"counter",      col:"#E8E0D0", shape:"counter", hasDecoy:true  },
       { x:4, z:12, w:4, h:8, label:"fridge",       col:"#C8C8C8", shape:"fridge"                  },
-      { x:8, z:4, w:4, h:4, label:"kitWindow1",   col:"#A8D8EA", shape:"window"                  },
       { x:12, z:32, w:4, h:4, label:"laundry",      col:"#E8D8C0", shape:"laundryBasket"           },
       // Kitchen extras: oven, sink, island, microwave, windows
       { x:12, z:8, w:4, h:4, label:"oven1",         col:"#333333", shape:"oven"                    },
@@ -631,13 +646,9 @@ export const LEVELS: LevelData[] = [
       { x:4, z:4, w:4, h:4, label:"microwave1",    col:"#888888", shape:"microwave"                },
       { x:4, z:24, w:8, h:4, label:"kitIsland",     col:"#7A6A5A", shape:"kitchenIsland"            },
       { x:16, z:8, w:4, h:4, label:"kitPlant",      col:"#4A7A4A", shape:"plant"                    },
-      { x:4, z:36, w:4, h:4, label:"kitWindow2",    col:"#A8D8EA", shape:"window"                   },
       { x:12, z:36, w:4, h:4, label:"kitLamp",      col:"#D4AF37", shape:"lamp"                     },
       { x:16, z:32, w:4, h:4, label:"kitRugDecor",  col:"#706050", shape:"rugDecor"                 },
       { x:16, z:24, w:4, h:4, label:"kitStool",     col:"#8B6F5C", shape:"stool"                    },
-      // Left wall windows
-      { x:2, z:16, w:2, h:4, label:"kitWinL1",      col:"#A8D8EA", shape:"window"                   },
-      { x:2, z:32, w:2, h:4, label:"kitWinL2",      col:"#A8D8EA", shape:"window"                   },
       // Door: kitchen → living room (x=20, doorway z=22..25)
       { x:20, z:22, w:1, h:4, label:"kitDoor",      col:"#8B6F5C", shape:"door"                     },
       // --- Living Room (x=22..43, z=2..45) ---
@@ -649,18 +660,13 @@ export const LEVELS: LevelData[] = [
       { x:24, z:28, w:4, h:4, label:"ottoman",      col:"#8B6F5C", shape:"ottoman"                 },
       { x:40, z:16, w:4, h:4, label:"livingLamp",   col:"#D4AF37", shape:"lamp"                    },
       { x:36, z:40, w:4, h:4, label:"livingPlant2", col:"#4A7A4A", shape:"plant"                   },
-      // Living room extras: windows, flowers, shelves
-      { x:24, z:4, w:4, h:4, label:"livingWindow1", col:"#A8D8EA", shape:"window"                  },
-      { x:40, z:4, w:4, h:4, label:"livingWindow2", col:"#A8D8EA", shape:"window"                  },
+      // Living room extras: flowers, shelves
       { x:36, z:4, w:4, h:4, label:"livingFlower",  col:"#AA4466", shape:"flowerVase"              },
       { x:24, z:16, w:4, h:4, label:"livingSideT",  col:"#5C3A1E", shape:"sideTableGlass"          },
       { x:40, z:36, w:4, h:4, label:"livingBookcase",col:"#504030", shape:"bookcase"               },
       { x:32, z:36, w:4, h:4, label:"livingLamp2",  col:"#D4AF37", shape:"lamp"                    },
       { x:32, z:28, w:4, h:4, label:"livingRugDecor",col:"#706050", shape:"rugDecor"               },
       { x:36, z:16, w:4, h:4, label:"livingDresser", col:"#504030", shape:"dresser"                },
-      // South wall windows
-      { x:28, z:40, w:4, h:4, label:"livingWinS1",  col:"#A8D8EA", shape:"window"                  },
-      { x:40, z:40, w:4, h:4, label:"livingWinS2",  col:"#A8D8EA", shape:"window"                  },
       // Door: living room → entry (x=44, doorway z=22..25)
       { x:44, z:22, w:1, h:4, label:"entryDoor",    col:"#8B6F5C", shape:"door"                    },
       // --- Entry (x=46..53, z=2..45) ---
@@ -669,8 +675,17 @@ export const LEVELS: LevelData[] = [
       { x:48, z:16, w:4, h:4, label:"entryMirror",  col:"#C0D0E0", shape:"mirror"                  },
       { x:48, z:4, w:4, h:4, label:"entryCoatRack", col:"#5A3A20", shape:"coatRack"                },
       { x:48, z:40, w:4, h:4, label:"entryPlant",   col:"#4A7A4A", shape:"plant"                   },
-      { x:52, z:16, w:2, h:4, label:"entryWindow1", col:"#A8D8EA", shape:"window"                  },
-      { x:52, z:28, w:2, h:4, label:"entryWindow2", col:"#A8D8EA", shape:"window"                  },
+    ],
+    // Windows integrated into walls
+    windowWalls: [
+      // North wall (z=1) — kitchen, living room, entry
+      [8,1],[9,1],[10,1],  [28,1],[29,1],[30,1],  [38,1],[39,1],[40,1],  [50,1],[51,1],[52,1],
+      // West wall (x=1) — kitchen
+      [1,14],[1,15],[1,16],  [1,30],[1,31],[1,32],
+      // East wall (x=54) — entry
+      [54,14],[54,15],[54,16],  [54,28],[54,29],[54,30],
+      // South wall (z=46) — kitchen, living room, entry
+      [8,46],[9,46],[10,46],  [28,46],[29,46],[30,46],  [38,46],[39,46],[40,46],  [50,46],[51,46],[52,46],
     ],
     rug: { x:24, z:16, w:16, h:12 },
     playerStart: { x:8, z:28 },
