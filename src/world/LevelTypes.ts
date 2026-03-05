@@ -90,6 +90,8 @@ export interface LevelData {
   decoys: number;
   decoyItems?: DecoyItemDef[];
   hidingSpots?: GridPos[];
+  /** Wall tiles that render as windows instead of solid panels */
+  windowWalls?: [number, number][];
   summonNpc?: SummonNpcDef;
   caughtLines: string[];
 }
