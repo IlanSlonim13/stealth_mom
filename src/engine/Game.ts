@@ -6,11 +6,28 @@ import {
   TODDLER_CONE_RANGE, TODDLER_CONE_ANGLE, TODDLER_SPEED,
   HUSBAND_CONE_RANGE, HUSBAND_CONE_ANGLE, HUSBAND_SPEED,
   CAUGHT_DELAY_MS, WIN_DELAY_MS, LURE_INVESTIGATE_SECS, LURE_SPEED_MULTIPLIER,
+  INTRO_HOLD_SECS, INTRO_ZOOM_SECS,
 } from "../utils/constants";
+import { easeOutQuad, lerp } from "../utils/easing";
 import { dist2d, pointInCone } from "../utils/coordinates";
 import { findPath } from "../pathfinding/Pathfinder";
 import { pickRandom } from "../utils/humor";
 import { AudioManager } from "./AudioManager";
+
+// ── Bubble text arrays ────────────────────────────────────────────────────
+
+const DAD_THOUGHTS = [
+  "I want that huge grill so bad",
+  "Is it too early to mow?",
+  "These steaks won't grill themselves",
+  "Did someone touch the thermostat?",
+  "I should organize the garage",
+  "That lawn won't mow itself",
+  "Where's the remote?",
+  "Time to check the tire pressure",
+];
+
+const BABY_TALK = ["mama!", "baba!", "gaga!", "dada!", "nana!", "wawa!", "brrr!", "uh oh!"];
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +62,8 @@ interface NpcState {
   patrolDir: number;
   patrolTimer: number;
   thoughtBubble?: THREE.Group;
+  lastBubbleChange: number;
+  bubbleTextIdx: number;
   // decoy lure
   lured: boolean;
   lureTarget: Vec2 | null;
@@ -90,6 +109,14 @@ export class Game {
 
   private caught = false;
   private won = false;
+  private introPhase = true;
+  private introElapsed = 0;
+  private introFrustStart = 1;
+  private introFrustEnd = 7;
+  private introCompleteCallback: (() => void) | null = null;
+  private relaxZoomPhase = false;
+  private relaxZoomElapsed = 0;
+  private relaxZoomCallback: (() => void) | null = null;
   private summoned = false;
   private decoyMesh: THREE.Group | null = null;
   private pickedUpItems = new Set<string>();
@@ -138,9 +165,11 @@ export class Game {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(palette.bg);
 
-    // Camera
+    // Camera — start zoomed in for intro, animate out later
     const aspect = el.clientWidth / el.clientHeight;
-    this.frust = Math.max(W, H) * TILE_SIZE * 0.65;
+    this.introFrustEnd = Math.max(W, H) * TILE_SIZE * 0.65;
+    this.introFrustStart = this.introFrustEnd * 0.15;
+    this.frust = this.introFrustStart;
     const f = this.frust;
     this.camera = new THREE.OrthographicCamera(
       -f * aspect, f * aspect, f, -f, 0.1, 100
@@ -308,47 +337,79 @@ export class Game {
     const artColors = ["#D4A0A0", "#A0C4D4", "#D4D4A0", "#C4A0D4", "#A0D4B4"];
     let artCounter = 0;
 
-    // Opaque wall material
+    // Opaque wall material (for non-hiding walls)
     const wallMatOpaque = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.85 });
-    // Transparent wall material (south/east faces — camera-facing)
-    const wallMatTransp = new THREE.MeshStandardMaterial({
-      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.15,
+    // Split-panel materials for walls that hide tiles behind them
+    const wallMatBottom = new THREE.MeshStandardMaterial({
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.35, depthWrite: false,
+    });
+    const wallMatTop = new THREE.MeshStandardMaterial({
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.1, depthWrite: false,
     });
     const baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.9 });
+
+    // Split dimensions: wall total height = 1.5
+    const bottomH = 0.5;
+    const topH = 1.0;
 
     for (const wallKey of this.allWallSet) {
       const [wx, wz] = wallKey.split(",").map(Number);
 
-      // [neighborX, neighborZ, worldOffX, worldOffZ, rotY, facingCamera]
-      // Camera is at (+X, +Y, +Z). South (z=max) and East (x=max) walls are closest to camera.
-      // Their interior panels are the NORTH face (oz<0) and WEST face (ox<0) → make transparent.
-      const faces: [number, number, number, number, number, boolean][] = [
-        [wx,     wz - 1,  0,             -TS * 0.46,  0,              true ],  // north face → transparent (south wall interior)
-        [wx,     wz + 1,  0,             +TS * 0.46,  Math.PI,        false],  // south face → opaque (north wall interior)
-        [wx - 1, wz,     -TS * 0.46,     0,           Math.PI / 2,    true ],  // west face → transparent (east wall interior)
-        [wx + 1, wz,     +TS * 0.46,     0,          -Math.PI / 2,   false],  // east face → opaque (west wall interior)
+      // Does this wall hide tiles from camera? Camera is at (+X, +Y, +Z).
+      // Tiles at lower (x + z) are further from camera → hidden behind this wall.
+      // Check north (wz-1) and west (wx-1) neighbors for non-wall tiles.
+      const hidesAnyTile = [
+        [wx, wz - 1],
+        [wx - 1, wz],
+      ].some(([nx, nz]) =>
+        nx >= 0 && nx < W && nz >= 0 && nz < H && !this.allWallSet.has(`${nx},${nz}`)
+      );
+
+      // [neighborX, neighborZ, worldOffX, worldOffZ, rotY]
+      const faces: [number, number, number, number, number][] = [
+        [wx,     wz - 1,  0,             -TS * 0.46,  0            ],  // north face
+        [wx,     wz + 1,  0,             +TS * 0.46,  Math.PI      ],  // south face
+        [wx - 1, wz,     -TS * 0.46,     0,           Math.PI / 2  ],  // west face
+        [wx + 1, wz,     +TS * 0.46,     0,          -Math.PI / 2  ],  // east face
       ];
 
-      for (const [nx, nz, ox, oz, rotY, facingCam] of faces) {
+      for (const [nx, nz, ox, oz, rotY] of faces) {
         if (nx < 0 || nx >= W || nz < 0 || nz >= H) continue;
         if (this.allWallSet.has(`${nx},${nz}`)) continue;
 
         const wx3 = (wx - this.cx) * TS;
         const wz3 = (wz - this.cz) * TS;
 
-        const wallMat = facingCam ? wallMatTransp : wallMatOpaque;
+        if (hidesAnyTile) {
+          // Split into two segments: semi-opaque bottom + transparent top
+          const panelBottom = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, bottomH, 0.06),
+            wallMatBottom,
+          );
+          panelBottom.position.set(wx3 + ox, TILE_H + bottomH / 2, wz3 + oz);
+          panelBottom.rotation.y = rotY;
+          panelBottom.renderOrder = 1;
+          this.scene.add(panelBottom);
 
-        // Tall wall panel — 1.5 world units high
-        const panel = new THREE.Mesh(
-          new THREE.BoxGeometry(0.92 * TS, 1.5, 0.06),
-          wallMat,
-        );
-        panel.position.set(wx3 + ox, TILE_H + 0.75, wz3 + oz);
-        panel.rotation.y = rotY;
-        this.scene.add(panel);
+          const panelTop = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, topH, 0.06),
+            wallMatTop,
+          );
+          panelTop.position.set(wx3 + ox, TILE_H + bottomH + topH / 2, wz3 + oz);
+          panelTop.rotation.y = rotY;
+          panelTop.renderOrder = 1;
+          this.scene.add(panelTop);
+        } else {
+          // Fully opaque wall panel with decorations
+          const panel = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, 1.5, 0.06),
+            wallMatOpaque,
+          );
+          panel.position.set(wx3 + ox, TILE_H + 0.75, wz3 + oz);
+          panel.rotation.y = rotY;
+          this.scene.add(panel);
 
-        // Baseboard
-        if (!facingCam) {
+          // Baseboard
           const base = new THREE.Mesh(
             new THREE.BoxGeometry(0.92 * TS, 0.06, 0.07),
             baseMat,
@@ -678,6 +739,106 @@ export class Game {
         }
         break;
       }
+      case "coffeeTable": {
+        const col = f.col;
+        add(new THREE.BoxGeometry(tw + 0.06, 0.04, th + 0.06), std(col, 0.6), 0.2);
+        leg(-tw / 2 + 0.05, -th / 2 + 0.05, 0.18, col);
+        leg( tw / 2 - 0.05, -th / 2 + 0.05, 0.18, col);
+        leg(-tw / 2 + 0.05,  th / 2 - 0.05, 0.18, col);
+        leg( tw / 2 - 0.05,  th / 2 - 0.05, 0.18, col);
+        // Magazine on top
+        const mag = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.01, 0.16), std("#DD6644", 0.8));
+        mag.position.set(0.04, 0.23, -0.02); mag.rotation.y = 0.3;
+        g.add(mag);
+        break;
+      }
+      case "ottoman": {
+        // Base
+        add(new THREE.CylinderGeometry(0.2, 0.18, 0.12, 10), std(f.col, 0.75), 0.06);
+        // Cushion top
+        add(new THREE.CylinderGeometry(0.22, 0.2, 0.06, 10), std(f.col, 0.7), 0.15);
+        // Button
+        const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 6), std("#333333", 0.5));
+        btn.position.y = 0.19;
+        g.add(btn);
+        break;
+      }
+      case "laundryBasket": {
+        // Basket body (wider at top)
+        add(new THREE.CylinderGeometry(0.2, 0.15, 0.35, 10, 1, true), std("#E8D8C0", 0.85), 0.18);
+        // Rim
+        add(new THREE.TorusGeometry(0.2, 0.02, 6, 12), std("#D0C0A0", 0.8), 0.35).rotation.x = Math.PI / 2;
+        // Clothes peeking out
+        const clotheCols = ["#FF6B8A", "#6BB5FF", "#FFD93D"];
+        clotheCols.forEach((cc, i) => {
+          const cloth = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), std(cc, 0.8));
+          cloth.position.set(Math.sin(i * 2.1) * 0.1, 0.32 + i * 0.03, Math.cos(i * 2.1) * 0.1);
+          g.add(cloth);
+        });
+        break;
+      }
+      case "toys": {
+        // Scattered toys on floor
+        // Block
+        const block = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), std("#FF4444", 0.6));
+        block.position.set(-0.12, 0.05, -0.08); block.rotation.y = 0.5;
+        block.castShadow = true; g.add(block);
+        // Ball
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.06, 7, 7), std("#4488FF", 0.5));
+        ball.position.set(0.1, 0.06, 0.05);
+        ball.castShadow = true; g.add(ball);
+        // Crayon
+        const crayon = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.14, 5), std("#44DD44", 0.6));
+        crayon.rotation.z = Math.PI / 2; crayon.rotation.x = 0.3;
+        crayon.position.set(0.0, 0.02, -0.12);
+        g.add(crayon);
+        // Yellow block
+        const block2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), std("#FFD700", 0.6));
+        block2.position.set(0.08, 0.04, -0.1); block2.rotation.y = -0.8;
+        block2.castShadow = true; g.add(block2);
+        break;
+      }
+      case "mirror": {
+        // Frame
+        add(new THREE.BoxGeometry(tw * 0.7, 0.5, 0.04), std("#4A2820", 0.7), 0.55);
+        // Reflective surface
+        const mirrorMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.6, 0.4, 0.02),
+          new THREE.MeshStandardMaterial({ color: "#C8D8E8", roughness: 0.1, metalness: 0.8 }),
+        );
+        mirrorMesh.position.set(0, 0.55, -0.02);
+        g.add(mirrorMesh);
+        break;
+      }
+      case "clock": {
+        // Back plate / circle face
+        const face = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.15, 0.15, 0.03, 16),
+          new THREE.MeshStandardMaterial({ color: "#FFFFF0", roughness: 0.4 }),
+        );
+        face.rotation.x = Math.PI / 2;
+        face.position.set(0, 0.6, 0);
+        g.add(face);
+        // Frame ring
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(0.15, 0.015, 6, 24),
+          std("#4A2820", 0.7),
+        );
+        ring.rotation.x = Math.PI / 2;
+        ring.position.set(0, 0.6, -0.02);
+        g.add(ring);
+        // Hour hand
+        const hHand = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.08, 0.01), std("#333", 0.5));
+        hHand.position.set(0, 0.63, -0.025);
+        hHand.rotation.z = 0.8;
+        g.add(hHand);
+        // Minute hand
+        const mHand = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.11, 0.01), std("#333", 0.5));
+        mHand.position.set(0, 0.62, -0.03);
+        mHand.rotation.z = -0.4;
+        g.add(mHand);
+        break;
+      }
       default: {
         // Generic fallback
         add(new THREE.BoxGeometry(tw, 0.45, th), new THREE.MeshToonMaterial({ color: f.col }), 0.23);
@@ -773,6 +934,15 @@ export class Game {
     // Head
     const head = addMesh(new THREE.SphereGeometry(0.13, 8, 8), "#F5D0B0", headY);
     this.momHead = head;
+
+    // Eyes (on +Z face so they face movement direction)
+    const eyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
+    const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), eyeMat);
+    eyeL.position.set(-0.045, headY + 0.02, 0.11);
+    g.add(eyeL);
+    const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), eyeMat);
+    eyeR.position.set(0.045, headY + 0.02, 0.11);
+    g.add(eyeR);
 
     // Hair
     const hairMat = new THREE.MeshToonMaterial({ color: "#4A2820" });
@@ -923,13 +1093,30 @@ export class Game {
         zGroup.add(zSprite);
       }
 
+      // Bone thought bubble
+      const dogTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
+      const dogTbGroup = new THREE.Group();
+      dogTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), dogTbMat));
+      const dogDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), dogTbMat);
+      dogDot1.position.set(-0.12, -0.18, 0);
+      dogTbGroup.add(dogDot1);
+      const dogDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), dogTbMat);
+      dogDot2.position.set(-0.18, -0.28, 0);
+      dogTbGroup.add(dogDot2);
+      const boneSprite = this.makeBoneSprite();
+      boneSprite.position.set(0, 0.02, 0);
+      dogTbGroup.add(boneSprite);
+      dogTbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.3, 0.65, (spawnZ - this.cz) * TILE_SIZE);
+      this.scene.add(dogTbGroup);
+
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
       const npc: NpcState = {
         type: "dog", group, pos: { x: spawnX, z: spawnZ }, startPos: { x: spawnX, z: spawnZ }, facing: 0,
-        circ, pulse, zGroup, radius: r,
+        circ, pulse, zGroup, radius: r, thoughtBubble: dogTbGroup,
         patrolIdx: 0, patrolDir: 1, patrolTimer: 0,
         lured: false, lureTarget: null, lureTimer: 0,
+        lastBubbleChange: 0, bubbleTextIdx: 0,
       };
       this.npcs.push(npc);
       return npc;
@@ -943,6 +1130,16 @@ export class Game {
         new THREE.MeshToonMaterial({ color: "#F5D8C0" }));
       h2.position.y = 0.42; h2.castShadow = true;
       group.add(h2);
+
+      // Eyes (on +Z face so they face movement direction)
+      const tEyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
+      const tEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), tEyeMat);
+      tEyeL.position.set(-0.06, 0.44, 0.13);
+      group.add(tEyeL);
+      const tEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), tEyeMat);
+      tEyeR.position.set(0.06, 0.44, 0.13);
+      group.add(tEyeR);
+
       const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4),
         new THREE.MeshToonMaterial({ color: "#DEB887" }));
       tuft.position.y = 0.58;
@@ -960,15 +1157,34 @@ export class Game {
       coneMesh.position.set((spawnX - this.cx) * TILE_SIZE, 0.04, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(coneMesh);
 
+      // Baby talk speech bubble
+      const toddlerTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
+      const toddlerTbGroup = new THREE.Group();
+      toddlerTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), toddlerTbMat));
+      const tDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), toddlerTbMat);
+      tDot1.position.set(-0.12, -0.18, 0);
+      toddlerTbGroup.add(tDot1);
+      const tDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), toddlerTbMat);
+      tDot2.position.set(-0.18, -0.28, 0);
+      toddlerTbGroup.add(tDot2);
+      const babyIdx = Math.floor(Math.random() * BABY_TALK.length);
+      const babyText = this.makeTextSprite(BABY_TALK[babyIdx]);
+      babyText.position.set(0, 0.04, 0);
+      babyText.name = "bubbleText";
+      toddlerTbGroup.add(babyText);
+      toddlerTbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.3, 0.9, (spawnZ - this.cz) * TILE_SIZE);
+      this.scene.add(toddlerTbGroup);
+
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
       const npc: NpcState = {
-        type: "toddler", group, coneMesh,
+        type: "toddler", group, coneMesh, thoughtBubble: toddlerTbGroup,
         pos: { x: spawnX, z: spawnZ }, startPos: { x: spawnX, z: spawnZ }, facing: def?.facing ?? 0,
         patrol: def?.patrol, patrolIdx: 0, patrolDir: 1, patrolTimer: 0,
         coneRange: TODDLER_CONE_RANGE, coneAngle: TODDLER_CONE_ANGLE, speed: TODDLER_SPEED,
         lured: chasing, lureTarget: chasing ? { x: this.momPos.x, z: this.momPos.z } : null,
         lureTimer: 0, chasing,
+        lastBubbleChange: 0, bubbleTextIdx: babyIdx,
       };
       this.npcs.push(npc);
       return npc;
@@ -982,6 +1198,15 @@ export class Game {
         new THREE.MeshToonMaterial({ color: "#E8C8A0" }));
       h3.position.y = 0.7; h3.castShadow = true;
       group.add(h3);
+
+      // Eyes (on +Z face so they face movement direction)
+      const hEyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
+      const hEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), hEyeMat);
+      hEyeL.position.set(-0.05, 0.72, 0.12);
+      group.add(hEyeL);
+      const hEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), hEyeMat);
+      hEyeR.position.set(0.05, 0.72, 0.12);
+      group.add(hEyeR);
 
       const coneLen2 = HUSBAND_CONE_RANGE * TILE_SIZE;
       const coneW2 = Math.tan(HUSBAND_CONE_ANGLE / 2) * coneLen2;
@@ -1004,11 +1229,12 @@ export class Game {
       const dot2 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), tbMat);
       dot2.position.set(-0.22, -0.32, 0);
       tbGroup.add(dot2);
-      if (def?.thought) {
-        const textSprite = this.makeTextSprite(def.thought);
-        textSprite.position.set(0, 0.04, 0);
-        tbGroup.add(textSprite);
-      }
+      const dadIdx = Math.floor(Math.random() * DAD_THOUGHTS.length);
+      const initThought = def?.thought ?? DAD_THOUGHTS[dadIdx];
+      const dadText = this.makeTextSprite(initThought);
+      dadText.position.set(0, 0.04, 0);
+      dadText.name = "bubbleText";
+      tbGroup.add(dadText);
       tbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.35, 1.2, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(tbGroup);
 
@@ -1020,6 +1246,7 @@ export class Game {
         patrol: def?.patrol, patrolIdx: 0, patrolDir: 1, patrolTimer: 0,
         coneRange: HUSBAND_CONE_RANGE, coneAngle: HUSBAND_CONE_ANGLE, speed: HUSBAND_SPEED,
         lured: false, lureTarget: null, lureTimer: 0,
+        lastBubbleChange: 0, bubbleTextIdx: dadIdx,
       };
       this.npcs.push(npc);
       return npc;
@@ -1065,6 +1292,30 @@ export class Game {
     return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
   }
 
+  private makeBoneSprite(): THREE.Sprite {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, 64, 64);
+    // Draw a bone shape: two circles connected by a rectangle
+    ctx.fillStyle = "#D2B48C";
+    ctx.strokeStyle = "#8B7355";
+    ctx.lineWidth = 2;
+    // Shaft
+    ctx.fillRect(20, 26, 24, 12);
+    ctx.strokeRect(20, 26, 24, 12);
+    // Left knobs
+    ctx.beginPath(); ctx.arc(20, 26, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(20, 38, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // Right knobs
+    ctx.beginPath(); ctx.arc(44, 26, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(44, 38, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    const tex = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+    sprite.scale.set(0.4, 0.4, 1);
+    return sprite;
+  }
+
   private makeTextSprite(text: string): THREE.Sprite {
     const canvas = document.createElement("canvas");
     canvas.width = 256; canvas.height = 64;
@@ -1087,7 +1338,45 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 1 / 30);
     this.frame++;
 
-    if (this.caught || this.won) {
+    if (this.caught) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
+    // Relax zoom-in phase (after winning, zoom back in on Mom)
+    if (this.won) {
+      if (this.relaxZoomPhase) {
+        this.relaxZoomElapsed += dt;
+        const zoomT = Math.min(this.relaxZoomElapsed / INTRO_ZOOM_SECS, 1);
+        const eased = easeOutQuad(zoomT);
+        this.frust = lerp(this.introFrustEnd, this.introFrustStart, eased);
+        this.updateFrustum();
+        if (zoomT >= 1) {
+          this.relaxZoomPhase = false;
+          this.relaxZoomCallback?.();
+          this.callbacks.onWon(this.level.winText);
+        }
+      }
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
+    // Intro zoom-out phase
+    if (this.introPhase) {
+      this.introElapsed += dt;
+      if (this.introElapsed > INTRO_HOLD_SECS) {
+        const zoomT = Math.min((this.introElapsed - INTRO_HOLD_SECS) / INTRO_ZOOM_SECS, 1);
+        const eased = easeOutQuad(zoomT);
+        this.frust = lerp(this.introFrustStart, this.introFrustEnd, eased);
+        this.updateFrustum();
+        if (zoomT >= 1) {
+          this.introPhase = false;
+          this.introCompleteCallback?.();
+        }
+      }
+      // Goal ring pulse still runs during intro
+      const s = 1 + Math.sin(this.frame * 0.05) * 0.15;
+      this.goalRing.scale.set(s, s, 1);
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -1225,6 +1514,13 @@ export class Game {
           if (npc.circ)  npc.circ.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.02, (npc.pos.z - this.cz) * TILE_SIZE);
           if (npc.pulse) npc.pulse.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.03, (npc.pos.z - this.cz) * TILE_SIZE);
           if (npc.zGroup) npc.zGroup.position.set((npc.pos.x - this.cx) * TILE_SIZE + 0.3, 0.6, (npc.pos.z - this.cz) * TILE_SIZE);
+          if (npc.thoughtBubble) {
+            npc.thoughtBubble.position.set(
+              (npc.pos.x - this.cx) * TILE_SIZE + 0.3,
+              0.65 + Math.sin(this.frame * 0.02) * 0.05,
+              (npc.pos.z - this.cz) * TILE_SIZE,
+            );
+          }
         } else {
           // Sleeping Z animation
           if (npc.zGroup) {
@@ -1235,6 +1531,10 @@ export class Game {
               child.position.y = (child.userData.baseY as number) + Math.sin(t) * 0.06;
               (child as THREE.Sprite).material.opacity = 0.35 + Math.sin(t) * 0.35;
             });
+          }
+          // Dog thought bubble bob
+          if (npc.thoughtBubble) {
+            npc.thoughtBubble.position.y = 0.65 + Math.sin(this.frame * 0.02) * 0.05;
           }
         }
         continue;
@@ -1287,18 +1587,39 @@ export class Game {
 
       npc.group.position.set((npc.pos.x - this.cx) * TILE_SIZE, TILE_H, (npc.pos.z - this.cz) * TILE_SIZE);
       if (npc.type === "toddler") {
+        npc.group.rotation.y = npc.facing;
         npc.group.rotation.z = Math.sin(this.frame * 0.15) * 0.08;
+      } else if (npc.type === "husband") {
+        npc.group.rotation.y = npc.facing;
       }
       if (npc.coneMesh) {
         npc.coneMesh.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.04, (npc.pos.z - this.cz) * TILE_SIZE);
         npc.coneMesh.rotation.z = -(npc.facing - Math.PI / 2);
       }
       if (npc.thoughtBubble) {
+        const bubbleY = npc.type === "toddler" ? 0.9 : 1.2;
+        const bubbleX = npc.type === "toddler" ? 0.3 : 0.35;
         npc.thoughtBubble.position.set(
-          (npc.pos.x - this.cx) * TILE_SIZE + 0.35,
-          1.2 + Math.sin(this.frame * 0.02) * 0.05,
+          (npc.pos.x - this.cx) * TILE_SIZE + bubbleX,
+          bubbleY + Math.sin(this.frame * 0.02) * 0.05,
           (npc.pos.z - this.cz) * TILE_SIZE,
         );
+
+        // Cycle text every ~3-4 seconds
+        const cycleInterval = npc.type === "toddler" ? 180 : 240;
+        if (this.frame - npc.lastBubbleChange > cycleInterval) {
+          npc.lastBubbleChange = this.frame;
+          const textArr = npc.type === "toddler" ? BABY_TALK : DAD_THOUGHTS;
+          npc.bubbleTextIdx = (npc.bubbleTextIdx + 1) % textArr.length;
+          // Remove old text sprite
+          const old = npc.thoughtBubble.getObjectByName("bubbleText");
+          if (old) npc.thoughtBubble.remove(old);
+          // Add new text sprite
+          const newText = this.makeTextSprite(textArr[npc.bubbleTextIdx]);
+          newText.position.set(0, 0.04, 0);
+          newText.name = "bubbleText";
+          npc.thoughtBubble.add(newText);
+        }
       }
     }
   }
@@ -1349,7 +1670,9 @@ export class Game {
     ) {
       this.won = true;
       AudioManager.play("success");
-      setTimeout(() => this.callbacks.onWon(lvl.winText), WIN_DELAY_MS);
+      AudioManager.stopAmbient();
+      this.relaxZoomPhase = true;
+      this.relaxZoomElapsed = 0;
     }
   }
 
@@ -1371,8 +1694,16 @@ export class Game {
     if (item) this.pickedUpItems.add(item.itemName);
   }
 
+  setIntroCompleteCallback(cb: () => void) {
+    this.introCompleteCallback = cb;
+  }
+
+  setRelaxZoomCallback(cb: () => void) {
+    this.relaxZoomCallback = cb;
+  }
+
   handleTap(clientX: number, clientY: number, decoyMode: false | "throw"): false | "thrown" {
-    if (this.caught || this.won) return false;
+    if (this.caught || this.won || this.introPhase) return false;
 
     const rect = this.element.getBoundingClientRect();
     const mouse = new THREE.Vector2(
@@ -1456,7 +1787,7 @@ export class Game {
     this.element.innerHTML = "";
   }
 
-  private onResize = () => {
+  private updateFrustum() {
     const el = this.element;
     const w = el.clientWidth;
     const h = el.clientHeight;
@@ -1468,6 +1799,14 @@ export class Game {
     this.camera.top = f;
     this.camera.bottom = -f;
     this.camera.updateProjectionMatrix();
+  }
+
+  private onResize = () => {
+    this.updateFrustum();
+    const el = this.element;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    if (w === 0 || h === 0) return;
     this.renderer.setSize(w, h);
   };
 }

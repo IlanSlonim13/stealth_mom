@@ -21,3 +21,7 @@ export const LURE_INVESTIGATE_SECS = 3;
 export const LURE_SPEED_MULTIPLIER = 1.5;
 
 export const PICKUP_RANGE = 2.8;  // 2×
+
+export const INTRO_HOLD_SECS = 1.5;
+export const INTRO_ZOOM_SECS = 2.0;
+export const RELAX_BUTTON_DELAY_MS = 6000;
