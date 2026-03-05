@@ -766,6 +766,10 @@ export class Game {
     const interiorWallSet = new Set<string>();
     (lvl.interiorWalls ?? []).forEach(([x, z]) => interiorWallSet.add(`${x},${z}`));
 
+    // Build set of window wall positions
+    const windowWallSet = new Set<string>();
+    (lvl.windowWalls ?? []).forEach(([x, z]) => windowWallSet.add(`${x},${z}`));
+
     // Interior wall materials — same look as perimeter but transparent
     const interiorWallMat = new THREE.MeshStandardMaterial({
       color: wallColor, roughness: 0.85, transparent: true, opacity: 0.45, depthWrite: false,
@@ -854,6 +858,142 @@ export class Game {
       for (const [nx, nz, ox, oz, rotY] of faces) {
         if (nx < 0 || nx >= W || nz < 0 || nz >= H) continue;
         if (this.allWallSet.has(`${nx},${nz}`)) continue;
+
+        // --- Window wall: render window instead of solid panel ---
+        if (windowWallSet.has(wallKey)) {
+          const pw = 0.92 * TS;  // panel width
+          const wh = 1.5;        // total wall height
+          const sillY = 0.3;     // sill height from floor
+          const winH = 0.85;     // window pane height
+          const winW = pw * 0.78; // window pane width
+          const frameD = 0.04;   // frame depth (slightly in front of wall)
+          const cx3 = wx3 + ox;
+          const cz3 = wz3 + oz;
+          const transparent = hidesAnyTile;
+
+          // Wall below the window (kick panel)
+          const kickMat = transparent ? wallMatBottom : wallMatOpaque;
+          const kick = new THREE.Mesh(new THREE.BoxGeometry(pw, sillY, 0.06), kickMat);
+          kick.position.set(cx3, TILE_H + sillY / 2, cz3);
+          kick.rotation.y = rotY;
+          if (transparent) kick.renderOrder = 1;
+          this.scene.add(kick);
+
+          // Wall above the window (header)
+          const headerH = wh - sillY - winH;
+          const headerMat = transparent ? wallMatTop : wallMatOpaque;
+          const header = new THREE.Mesh(new THREE.BoxGeometry(pw, headerH, 0.06), headerMat);
+          header.position.set(cx3, TILE_H + sillY + winH + headerH / 2, cz3);
+          header.rotation.y = rotY;
+          if (transparent) header.renderOrder = 1;
+          this.scene.add(header);
+
+          // Wall strips on left and right of window
+          const stripW = (pw - winW) / 2;
+          for (const side of [-1, 1]) {
+            const strip = new THREE.Mesh(
+              new THREE.BoxGeometry(stripW, winH, 0.06),
+              transparent ? wallMatBottom : wallMatOpaque,
+            );
+            strip.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+            strip.rotation.y = rotY;
+            // Offset along the panel's local X axis
+            const localOff = side * (winW / 2 + stripW / 2);
+            strip.translateX(localOff);
+            if (transparent) strip.renderOrder = 1;
+            this.scene.add(strip);
+          }
+
+          // Glass pane
+          const glassMat = new THREE.MeshStandardMaterial({
+            color: "#B8D8F0", roughness: 0.1, metalness: 0.05,
+            transparent: true, opacity: 0.35, depthWrite: false,
+          });
+          const glass = new THREE.Mesh(new THREE.BoxGeometry(winW, winH, 0.01), glassMat);
+          glass.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+          glass.rotation.y = rotY;
+          glass.renderOrder = 2;
+          this.scene.add(glass);
+
+          // Window frame (4 pieces around the glass)
+          const frameMat = new THREE.MeshStandardMaterial({ color: "#FAFAFA", roughness: 0.6 });
+          const frameT = 0.018; // frame thickness
+          // Top frame
+          const ft = new THREE.Mesh(new THREE.BoxGeometry(winW + frameT * 2, frameT, frameD), frameMat);
+          ft.position.set(cx3, TILE_H + sillY + winH + frameT / 2, cz3);
+          ft.rotation.y = rotY;
+          ft.translateZ(-0.02);
+          this.scene.add(ft);
+          // Bottom frame (sill)
+          const sillMat = new THREE.MeshStandardMaterial({ color: "#F0F0F0", roughness: 0.5 });
+          const fb = new THREE.Mesh(new THREE.BoxGeometry(winW + frameT * 2, frameT * 1.5, frameD * 2), sillMat);
+          fb.position.set(cx3, TILE_H + sillY - frameT / 2, cz3);
+          fb.rotation.y = rotY;
+          fb.translateZ(-0.03);
+          this.scene.add(fb);
+          // Left frame
+          const fl = new THREE.Mesh(new THREE.BoxGeometry(frameT, winH, frameD), frameMat);
+          fl.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+          fl.rotation.y = rotY;
+          fl.translateX(-winW / 2 - frameT / 2);
+          fl.translateZ(-0.02);
+          this.scene.add(fl);
+          // Right frame
+          const fr = new THREE.Mesh(new THREE.BoxGeometry(frameT, winH, frameD), frameMat);
+          fr.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+          fr.rotation.y = rotY;
+          fr.translateX(winW / 2 + frameT / 2);
+          fr.translateZ(-0.02);
+          this.scene.add(fr);
+
+          // Cross/mullion pattern — vertical bar + horizontal bar
+          const mullionMat = new THREE.MeshStandardMaterial({ color: "#F5F5F5", roughness: 0.6 });
+          const mullionT = 0.012;
+          // Vertical mullion
+          const mv = new THREE.Mesh(new THREE.BoxGeometry(mullionT, winH, frameD * 0.7), mullionMat);
+          mv.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+          mv.rotation.y = rotY;
+          mv.translateZ(-0.025);
+          this.scene.add(mv);
+          // Horizontal mullion
+          const mh = new THREE.Mesh(new THREE.BoxGeometry(winW, mullionT, frameD * 0.7), mullionMat);
+          mh.position.set(cx3, TILE_H + sillY + winH * 0.55, cz3);
+          mh.rotation.y = rotY;
+          mh.translateZ(-0.025);
+          this.scene.add(mh);
+
+          // Blinds — thin horizontal strips at the top ~35% of window
+          const blindsMat = new THREE.MeshStandardMaterial({
+            color: "#F0EDE8", roughness: 0.7,
+            transparent: true, opacity: 0.7, depthWrite: false,
+          });
+          const blindCount = 6;
+          const blindZoneH = winH * 0.35;
+          const blindStartY = TILE_H + sillY + winH - blindZoneH;
+          for (let bi = 0; bi < blindCount; bi++) {
+            const by = blindStartY + (bi + 0.5) * (blindZoneH / blindCount);
+            const blind = new THREE.Mesh(
+              new THREE.BoxGeometry(winW * 0.96, 0.008, 0.015),
+              blindsMat,
+            );
+            blind.position.set(cx3, by, cz3);
+            blind.rotation.y = rotY;
+            blind.translateZ(-0.035);
+            blind.renderOrder = 3;
+            this.scene.add(blind);
+          }
+
+          // Baseboard
+          const base = new THREE.Mesh(
+            new THREE.BoxGeometry(pw, 0.06, 0.07),
+            baseMat,
+          );
+          base.position.set(cx3, TILE_H + 0.03, cz3);
+          base.rotation.y = rotY;
+          this.scene.add(base);
+
+          continue;
+        }
 
         if (hidesAnyTile) {
           // Split into two segments: semi-opaque bottom + transparent top
