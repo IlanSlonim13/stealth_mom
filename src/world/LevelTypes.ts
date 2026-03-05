@@ -24,7 +24,8 @@ export interface MomOutfit {
 export type FurnitureShape =
   | "table" | "shelf" | "fridge" | "counter" | "lamp" | "plant"
   | "toybox" | "stool" | "shoeRack" | "couch" | "tv" | "dresser"
-  | "bed" | "bathtub" | "bookcase" | "desk" | "tvUnit";
+  | "bed" | "bathtub" | "bookcase" | "desk" | "tvUnit"
+  | "coffeeTable" | "ottoman" | "laundryBasket" | "toys" | "mirror" | "clock";
 
 export interface FurnitureDef {
   x: number;

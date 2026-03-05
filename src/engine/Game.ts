@@ -12,6 +12,21 @@ import { findPath } from "../pathfinding/Pathfinder";
 import { pickRandom } from "../utils/humor";
 import { AudioManager } from "./AudioManager";
 
+// ── Bubble text arrays ────────────────────────────────────────────────────
+
+const DAD_THOUGHTS = [
+  "I want that huge grill so bad",
+  "Is it too early to mow?",
+  "These steaks won't grill themselves",
+  "Did someone touch the thermostat?",
+  "I should organize the garage",
+  "That lawn won't mow itself",
+  "Where's the remote?",
+  "Time to check the tire pressure",
+];
+
+const BABY_TALK = ["mama!", "baba!", "gaga!", "dada!", "nana!", "wawa!", "brrr!", "uh oh!"];
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface Vec2 { x: number; z: number; }
@@ -45,6 +60,8 @@ interface NpcState {
   patrolDir: number;
   patrolTimer: number;
   thoughtBubble?: THREE.Group;
+  lastBubbleChange: number;
+  bubbleTextIdx: number;
   // decoy lure
   lured: boolean;
   lureTarget: Vec2 | null;
@@ -710,6 +727,106 @@ export class Game {
         }
         break;
       }
+      case "coffeeTable": {
+        const col = f.col;
+        add(new THREE.BoxGeometry(tw + 0.06, 0.04, th + 0.06), std(col, 0.6), 0.2);
+        leg(-tw / 2 + 0.05, -th / 2 + 0.05, 0.18, col);
+        leg( tw / 2 - 0.05, -th / 2 + 0.05, 0.18, col);
+        leg(-tw / 2 + 0.05,  th / 2 - 0.05, 0.18, col);
+        leg( tw / 2 - 0.05,  th / 2 - 0.05, 0.18, col);
+        // Magazine on top
+        const mag = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.01, 0.16), std("#DD6644", 0.8));
+        mag.position.set(0.04, 0.23, -0.02); mag.rotation.y = 0.3;
+        g.add(mag);
+        break;
+      }
+      case "ottoman": {
+        // Base
+        add(new THREE.CylinderGeometry(0.2, 0.18, 0.12, 10), std(f.col, 0.75), 0.06);
+        // Cushion top
+        add(new THREE.CylinderGeometry(0.22, 0.2, 0.06, 10), std(f.col, 0.7), 0.15);
+        // Button
+        const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 6), std("#333333", 0.5));
+        btn.position.y = 0.19;
+        g.add(btn);
+        break;
+      }
+      case "laundryBasket": {
+        // Basket body (wider at top)
+        add(new THREE.CylinderGeometry(0.2, 0.15, 0.35, 10, 1, true), std("#E8D8C0", 0.85), 0.18);
+        // Rim
+        add(new THREE.TorusGeometry(0.2, 0.02, 6, 12), std("#D0C0A0", 0.8), 0.35).rotation.x = Math.PI / 2;
+        // Clothes peeking out
+        const clotheCols = ["#FF6B8A", "#6BB5FF", "#FFD93D"];
+        clotheCols.forEach((cc, i) => {
+          const cloth = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), std(cc, 0.8));
+          cloth.position.set(Math.sin(i * 2.1) * 0.1, 0.32 + i * 0.03, Math.cos(i * 2.1) * 0.1);
+          g.add(cloth);
+        });
+        break;
+      }
+      case "toys": {
+        // Scattered toys on floor
+        // Block
+        const block = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), std("#FF4444", 0.6));
+        block.position.set(-0.12, 0.05, -0.08); block.rotation.y = 0.5;
+        block.castShadow = true; g.add(block);
+        // Ball
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.06, 7, 7), std("#4488FF", 0.5));
+        ball.position.set(0.1, 0.06, 0.05);
+        ball.castShadow = true; g.add(ball);
+        // Crayon
+        const crayon = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.14, 5), std("#44DD44", 0.6));
+        crayon.rotation.z = Math.PI / 2; crayon.rotation.x = 0.3;
+        crayon.position.set(0.0, 0.02, -0.12);
+        g.add(crayon);
+        // Yellow block
+        const block2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), std("#FFD700", 0.6));
+        block2.position.set(0.08, 0.04, -0.1); block2.rotation.y = -0.8;
+        block2.castShadow = true; g.add(block2);
+        break;
+      }
+      case "mirror": {
+        // Frame
+        add(new THREE.BoxGeometry(tw * 0.7, 0.5, 0.04), std("#4A2820", 0.7), 0.55);
+        // Reflective surface
+        const mirrorMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.6, 0.4, 0.02),
+          new THREE.MeshStandardMaterial({ color: "#C8D8E8", roughness: 0.1, metalness: 0.8 }),
+        );
+        mirrorMesh.position.set(0, 0.55, -0.02);
+        g.add(mirrorMesh);
+        break;
+      }
+      case "clock": {
+        // Back plate / circle face
+        const face = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.15, 0.15, 0.03, 16),
+          new THREE.MeshStandardMaterial({ color: "#FFFFF0", roughness: 0.4 }),
+        );
+        face.rotation.x = Math.PI / 2;
+        face.position.set(0, 0.6, 0);
+        g.add(face);
+        // Frame ring
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(0.15, 0.015, 6, 24),
+          std("#4A2820", 0.7),
+        );
+        ring.rotation.x = Math.PI / 2;
+        ring.position.set(0, 0.6, -0.02);
+        g.add(ring);
+        // Hour hand
+        const hHand = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.08, 0.01), std("#333", 0.5));
+        hHand.position.set(0, 0.63, -0.025);
+        hHand.rotation.z = 0.8;
+        g.add(hHand);
+        // Minute hand
+        const mHand = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.11, 0.01), std("#333", 0.5));
+        mHand.position.set(0, 0.62, -0.03);
+        mHand.rotation.z = -0.4;
+        g.add(mHand);
+        break;
+      }
       default: {
         // Generic fallback
         add(new THREE.BoxGeometry(tw, 0.45, th), new THREE.MeshToonMaterial({ color: f.col }), 0.23);
@@ -964,13 +1081,30 @@ export class Game {
         zGroup.add(zSprite);
       }
 
+      // Bone thought bubble
+      const dogTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
+      const dogTbGroup = new THREE.Group();
+      dogTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), dogTbMat));
+      const dogDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), dogTbMat);
+      dogDot1.position.set(-0.12, -0.18, 0);
+      dogTbGroup.add(dogDot1);
+      const dogDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), dogTbMat);
+      dogDot2.position.set(-0.18, -0.28, 0);
+      dogTbGroup.add(dogDot2);
+      const boneSprite = this.makeBoneSprite();
+      boneSprite.position.set(0, 0.02, 0);
+      dogTbGroup.add(boneSprite);
+      dogTbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.3, 0.65, (spawnZ - this.cz) * TILE_SIZE);
+      this.scene.add(dogTbGroup);
+
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
       const npc: NpcState = {
         type: "dog", group, pos: { x: spawnX, z: spawnZ }, startPos: { x: spawnX, z: spawnZ }, facing: 0,
-        circ, pulse, zGroup, radius: r,
+        circ, pulse, zGroup, radius: r, thoughtBubble: dogTbGroup,
         patrolIdx: 0, patrolDir: 1, patrolTimer: 0,
         lured: false, lureTarget: null, lureTimer: 0,
+        lastBubbleChange: 0, bubbleTextIdx: 0,
       };
       this.npcs.push(npc);
       return npc;
@@ -1011,15 +1145,34 @@ export class Game {
       coneMesh.position.set((spawnX - this.cx) * TILE_SIZE, 0.04, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(coneMesh);
 
+      // Baby talk speech bubble
+      const toddlerTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
+      const toddlerTbGroup = new THREE.Group();
+      toddlerTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), toddlerTbMat));
+      const tDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), toddlerTbMat);
+      tDot1.position.set(-0.12, -0.18, 0);
+      toddlerTbGroup.add(tDot1);
+      const tDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), toddlerTbMat);
+      tDot2.position.set(-0.18, -0.28, 0);
+      toddlerTbGroup.add(tDot2);
+      const babyIdx = Math.floor(Math.random() * BABY_TALK.length);
+      const babyText = this.makeTextSprite(BABY_TALK[babyIdx]);
+      babyText.position.set(0, 0.04, 0);
+      babyText.name = "bubbleText";
+      toddlerTbGroup.add(babyText);
+      toddlerTbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.3, 0.9, (spawnZ - this.cz) * TILE_SIZE);
+      this.scene.add(toddlerTbGroup);
+
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
       const npc: NpcState = {
-        type: "toddler", group, coneMesh,
+        type: "toddler", group, coneMesh, thoughtBubble: toddlerTbGroup,
         pos: { x: spawnX, z: spawnZ }, startPos: { x: spawnX, z: spawnZ }, facing: def?.facing ?? 0,
         patrol: def?.patrol, patrolIdx: 0, patrolDir: 1, patrolTimer: 0,
         coneRange: TODDLER_CONE_RANGE, coneAngle: TODDLER_CONE_ANGLE, speed: TODDLER_SPEED,
         lured: chasing, lureTarget: chasing ? { x: this.momPos.x, z: this.momPos.z } : null,
         lureTimer: 0, chasing,
+        lastBubbleChange: 0, bubbleTextIdx: babyIdx,
       };
       this.npcs.push(npc);
       return npc;
@@ -1064,11 +1217,12 @@ export class Game {
       const dot2 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), tbMat);
       dot2.position.set(-0.22, -0.32, 0);
       tbGroup.add(dot2);
-      if (def?.thought) {
-        const textSprite = this.makeTextSprite(def.thought);
-        textSprite.position.set(0, 0.04, 0);
-        tbGroup.add(textSprite);
-      }
+      const dadIdx = Math.floor(Math.random() * DAD_THOUGHTS.length);
+      const initThought = def?.thought ?? DAD_THOUGHTS[dadIdx];
+      const dadText = this.makeTextSprite(initThought);
+      dadText.position.set(0, 0.04, 0);
+      dadText.name = "bubbleText";
+      tbGroup.add(dadText);
       tbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.35, 1.2, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(tbGroup);
 
@@ -1080,6 +1234,7 @@ export class Game {
         patrol: def?.patrol, patrolIdx: 0, patrolDir: 1, patrolTimer: 0,
         coneRange: HUSBAND_CONE_RANGE, coneAngle: HUSBAND_CONE_ANGLE, speed: HUSBAND_SPEED,
         lured: false, lureTarget: null, lureTimer: 0,
+        lastBubbleChange: 0, bubbleTextIdx: dadIdx,
       };
       this.npcs.push(npc);
       return npc;
@@ -1123,6 +1278,30 @@ export class Game {
     ctx.fillText(text, 32, 32);
     const tex = new THREE.CanvasTexture(canvas);
     return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  }
+
+  private makeBoneSprite(): THREE.Sprite {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, 64, 64);
+    // Draw a bone shape: two circles connected by a rectangle
+    ctx.fillStyle = "#D2B48C";
+    ctx.strokeStyle = "#8B7355";
+    ctx.lineWidth = 2;
+    // Shaft
+    ctx.fillRect(20, 26, 24, 12);
+    ctx.strokeRect(20, 26, 24, 12);
+    // Left knobs
+    ctx.beginPath(); ctx.arc(20, 26, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(20, 38, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // Right knobs
+    ctx.beginPath(); ctx.arc(44, 26, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(44, 38, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    const tex = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+    sprite.scale.set(0.4, 0.4, 1);
+    return sprite;
   }
 
   private makeTextSprite(text: string): THREE.Sprite {
@@ -1285,6 +1464,13 @@ export class Game {
           if (npc.circ)  npc.circ.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.02, (npc.pos.z - this.cz) * TILE_SIZE);
           if (npc.pulse) npc.pulse.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.03, (npc.pos.z - this.cz) * TILE_SIZE);
           if (npc.zGroup) npc.zGroup.position.set((npc.pos.x - this.cx) * TILE_SIZE + 0.3, 0.6, (npc.pos.z - this.cz) * TILE_SIZE);
+          if (npc.thoughtBubble) {
+            npc.thoughtBubble.position.set(
+              (npc.pos.x - this.cx) * TILE_SIZE + 0.3,
+              0.65 + Math.sin(this.frame * 0.02) * 0.05,
+              (npc.pos.z - this.cz) * TILE_SIZE,
+            );
+          }
         } else {
           // Sleeping Z animation
           if (npc.zGroup) {
@@ -1295,6 +1481,10 @@ export class Game {
               child.position.y = (child.userData.baseY as number) + Math.sin(t) * 0.06;
               (child as THREE.Sprite).material.opacity = 0.35 + Math.sin(t) * 0.35;
             });
+          }
+          // Dog thought bubble bob
+          if (npc.thoughtBubble) {
+            npc.thoughtBubble.position.y = 0.65 + Math.sin(this.frame * 0.02) * 0.05;
           }
         }
         continue;
@@ -1357,11 +1547,29 @@ export class Game {
         npc.coneMesh.rotation.z = -(npc.facing - Math.PI / 2);
       }
       if (npc.thoughtBubble) {
+        const bubbleY = npc.type === "toddler" ? 0.9 : 1.2;
+        const bubbleX = npc.type === "toddler" ? 0.3 : 0.35;
         npc.thoughtBubble.position.set(
-          (npc.pos.x - this.cx) * TILE_SIZE + 0.35,
-          1.2 + Math.sin(this.frame * 0.02) * 0.05,
+          (npc.pos.x - this.cx) * TILE_SIZE + bubbleX,
+          bubbleY + Math.sin(this.frame * 0.02) * 0.05,
           (npc.pos.z - this.cz) * TILE_SIZE,
         );
+
+        // Cycle text every ~3-4 seconds
+        const cycleInterval = npc.type === "toddler" ? 180 : 240;
+        if (this.frame - npc.lastBubbleChange > cycleInterval) {
+          npc.lastBubbleChange = this.frame;
+          const textArr = npc.type === "toddler" ? BABY_TALK : DAD_THOUGHTS;
+          npc.bubbleTextIdx = (npc.bubbleTextIdx + 1) % textArr.length;
+          // Remove old text sprite
+          const old = npc.thoughtBubble.getObjectByName("bubbleText");
+          if (old) npc.thoughtBubble.remove(old);
+          // Add new text sprite
+          const newText = this.makeTextSprite(textArr[npc.bubbleTextIdx]);
+          newText.position.set(0, 0.04, 0);
+          newText.name = "bubbleText";
+          npc.thoughtBubble.add(newText);
+        }
       }
     }
   }
