@@ -126,6 +126,10 @@ export class Game {
   private frame = 0;
   private animId = 0;
   private clock = new THREE.Clock();
+  private pinchStartDist = 0;
+  private pinchStartFrust = 0;
+  private frustMin = 1;
+  private frustMax = 20;
 
   private level: LevelData;
   private callbacks: GameCallbacks;
@@ -225,7 +229,14 @@ export class Game {
     ]);
     AudioManager.startAmbient();
 
+    // Zoom limits: allow zooming in to ~40% of default and out to ~160%
+    this.frustMin = this.introFrustEnd * 0.4;
+    this.frustMax = this.introFrustEnd * 1.6;
+
     window.addEventListener("resize", this.onResize);
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener("touchstart", this.onTouchStart, { passive: false });
+    canvas.addEventListener("touchmove", this.onTouchMove, { passive: false });
     this.animate();
   }
 
@@ -1808,11 +1819,39 @@ export class Game {
   destroy() {
     cancelAnimationFrame(this.animId);
     window.removeEventListener("resize", this.onResize);
+    const canvas = this.renderer.domElement;
+    canvas.removeEventListener("touchstart", this.onTouchStart);
+    canvas.removeEventListener("touchmove", this.onTouchMove);
     if (this.decoyMesh) { this.scene.remove(this.decoyMesh); this.decoyMesh = null; }
     AudioManager.stopAmbient();
     this.renderer.dispose();
     this.element.innerHTML = "";
   }
+
+  private onTouchStart = (e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      this.pinchStartDist = Math.hypot(dx, dy);
+      this.pinchStartFrust = this.frust;
+    }
+  };
+
+  private onTouchMove = (e: TouchEvent) => {
+    if (e.touches.length === 2 && !this.introPhase && !this.relaxZoomPhase) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (this.pinchStartDist > 0) {
+        const scale = this.pinchStartDist / dist;
+        this.frust = Math.max(this.frustMin, Math.min(this.frustMax, this.pinchStartFrust * scale));
+        this.introFrustEnd = this.frust;
+        this.updateFrustum();
+      }
+    }
+  };
 
   private updateFrustum() {
     const el = this.element;
