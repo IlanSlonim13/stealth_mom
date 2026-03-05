@@ -139,6 +139,10 @@ export class Game {
   private wasMultiTouch = false;
   private onDeferredTap: ((x: number, y: number) => void) | null = null;
 
+  // Animated outdoor objects
+  private outdoorCars: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number }[] = [];
+  private outdoorPeople: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D }[] = [];
+
   private level: LevelData;
   private callbacks: GameCallbacks;
   private element: HTMLElement;
@@ -455,13 +459,15 @@ export class Game {
     mailFlag.position.set(mbX + 0.12, 0.68, mbZ);
     this.scene.add(mailFlag);
 
-    // ── People walking on sidewalk ──
-    const personPositions: [number, number, string][] = [
-      [fenceMinX - 1, roadZ - 2.0, "#3A5A8A"],
-      [fenceMinX + 3, roadZ + 2.0, "#8A3A5A"],
-      [fenceMaxX + 1, roadZ - 2.0, "#5A8A3A"],
+    // ── People walking on sidewalk (animated) ──
+    const walkMinX = fenceMinX - 4;
+    const walkMaxX = fenceMaxX + 4;
+    const personDefs: [number, number, string, number][] = [
+      [fenceMinX - 1, roadZ - 2.0, "#3A5A8A", 0.4],
+      [fenceMinX + 3, roadZ + 2.0, "#8A3A5A", -0.35],
+      [fenceMaxX + 1, roadZ - 2.0, "#5A8A3A", 0.3],
     ];
-    personPositions.forEach(([px, pz, col]) => {
+    personDefs.forEach(([px, pz, col, speed]) => {
       const personGroup = new THREE.Group();
       // Body
       const body = new THREE.Mesh(
@@ -477,7 +483,8 @@ export class Game {
       );
       head.position.y = 0.55;
       personGroup.add(head);
-      // Legs
+      // Legs (stored for walk animation)
+      const legs: THREE.Object3D[] = [];
       for (const lx of [-0.04, 0.04]) {
         const legMesh = new THREE.Mesh(
           new THREE.CylinderGeometry(0.025, 0.025, 0.2, 5),
@@ -485,49 +492,55 @@ export class Game {
         );
         legMesh.position.set(lx, 0.1, 0);
         personGroup.add(legMesh);
+        legs.push(legMesh);
       }
       personGroup.position.set(px, 0, pz);
+      // Face walking direction
+      if (speed < 0) personGroup.rotation.y = Math.PI;
       personGroup.castShadow = true;
       this.scene.add(personGroup);
+      this.outdoorPeople.push({
+        group: personGroup, minX: walkMinX, maxX: walkMaxX,
+        speed, dir: speed > 0 ? 1 : -1,
+        leftLeg: legs[0], rightLeg: legs[1],
+      });
     });
 
-    // ── Cars ──
-    const carPositions: [number, number, number, string, string][] = [
-      // Car on driveway
-      [dwX, 0, fenceMaxZ + 1, "#4A6A8A", "#C0D0E0"],
-      // Car on road
-      [fenceMinX - 2, 0, roadZ - 0.3, "#8A2A2A", "#B8C8D8"],
-      // Parked car across street
-      [fenceMaxX + 3, 0, roadZ + 0.3, "#2A5A2A", "#C0D0D0"],
+    // ── Cars (some parked, some driving) ──
+    const driveMinX = fenceMinX - 8;
+    const driveMaxX = fenceMaxX + 8;
+    // [startX, startZ, bodyCol, windowCol, speed (0=parked)]
+    const carDefs: [number, number, string, string, number][] = [
+      // Parked car on driveway
+      [dwX, fenceMaxZ + 1, "#4A6A8A", "#C0D0E0", 0],
+      // Driving car on road (going right)
+      [fenceMinX - 2, roadZ - 0.3, "#8A2A2A", "#B8C8D8", 1.8],
+      // Driving car on road (going left)
+      [fenceMaxX + 3, roadZ + 0.3, "#2A5A2A", "#C0D0D0", -1.5],
     ];
-    carPositions.forEach(([cx, , cz, bodyCol, windowCol]) => {
+    const buildCar = (cx: number, cz: number, bodyCol: string, windowCol: string): THREE.Group => {
       const carGroup = new THREE.Group();
-      // Body
       const carBody = new THREE.Mesh(
         new THREE.BoxGeometry(0.8, 0.25, 0.45),
         stdMat(bodyCol, 0.5),
       );
       carBody.position.y = 0.18;
       carGroup.add(carBody);
-      // Roof / cabin
       const cabin = new THREE.Mesh(
         new THREE.BoxGeometry(0.45, 0.2, 0.4),
         stdMat(bodyCol, 0.5),
       );
       cabin.position.set(-0.05, 0.37, 0);
       carGroup.add(cabin);
-      // Windows
       const winMat = new THREE.MeshStandardMaterial({
         color: windowCol, roughness: 0.1, metalness: 0.2,
         transparent: true, opacity: 0.6,
       });
-      // Side windows
       for (const wz of [-0.21, 0.21]) {
         const win = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 0.01), winMat);
         win.position.set(-0.05, 0.39, wz);
         carGroup.add(win);
       }
-      // Wheels
       const wheelMat = stdMat("#1A1A1A", 0.8);
       const wheelGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 8);
       for (const [wx2, wz2] of [[-0.25, -0.22], [-0.25, 0.22], [0.25, -0.22], [0.25, 0.22]]) {
@@ -536,7 +549,6 @@ export class Game {
         wheel.position.set(wx2, 0.08, wz2);
         carGroup.add(wheel);
       }
-      // Headlights
       const hlMat = new THREE.MeshStandardMaterial({
         color: "#FFFFCC", emissive: "#FFFFAA", emissiveIntensity: 0.3,
       });
@@ -548,57 +560,107 @@ export class Game {
       carGroup.position.set(cx, 0, cz);
       carGroup.castShadow = true;
       this.scene.add(carGroup);
+      return carGroup;
+    };
+    carDefs.forEach(([cx, cz, bodyCol, windowCol, speed]) => {
+      const carGroup = buildCar(cx, cz, bodyCol, windowCol);
+      // Face driving direction
+      if (speed < 0) carGroup.rotation.y = Math.PI;
+      if (speed !== 0) {
+        this.outdoorCars.push({
+          group: carGroup, minX: driveMinX, maxX: driveMaxX,
+          speed, dir: speed > 0 ? 1 : -1,
+        });
+      }
     });
 
-    // ── Neighbor houses (distant, simple shapes across the road) ──
+    // ── Neighbor houses (same scale as player's house, fully opaque) ──
+    // Player house width ~ W * TS, height ~ 1.5 (wall height)
+    const houseW = W * TS * 0.55;
+    const houseD = H * TS * 0.4;
+    const wallH = 1.5;
     const housePositions: [number, number, string, string][] = [
-      [fenceMinX - 1, roadZ + 5.5, "#D4C4A8", "#8B4A2A"],
-      [0, roadZ + 6.0, "#C0B8A0", "#6A3A1A"],
-      [fenceMaxX + 1, roadZ + 5.5, "#E0D0B8", "#7A5A3A"],
+      [fenceMinX - houseW * 0.7, roadZ + 3 + houseD / 2, "#D4C4A8", "#8B4A2A"],
+      [0, roadZ + 3.5 + houseD / 2, "#C0B8A0", "#6A3A1A"],
+      [fenceMaxX + houseW * 0.7, roadZ + 3 + houseD / 2, "#E0D0B8", "#7A5A3A"],
     ];
     housePositions.forEach(([hx, hz, wallCol, roofCol]) => {
       const houseGroup = new THREE.Group();
-      // House body
+      // House body — fully opaque
       const hBody = new THREE.Mesh(
-        new THREE.BoxGeometry(2.5, 1.0, 1.5),
+        new THREE.BoxGeometry(houseW, wallH, houseD),
         stdMat(wallCol, 0.85),
       );
-      hBody.position.y = 0.5;
+      hBody.position.y = wallH / 2;
       houseGroup.add(hBody);
-      // Roof (triangular prism approximated with a rotated box)
-      const roof = new THREE.Mesh(
-        new THREE.BoxGeometry(2.7, 0.15, 1.8),
-        stdMat(roofCol, 0.8),
-      );
-      roof.position.y = 1.08;
-      roof.rotation.x = 0;
-      houseGroup.add(roof);
-      // Roof peak
-      const peak = new THREE.Mesh(
-        new THREE.BoxGeometry(2.7, 0.15, 1.2),
-        stdMat(roofCol, 0.8),
-      );
-      peak.position.y = 1.22;
-      houseGroup.add(peak);
-      // Door
+      // Roof layers (stepped for a roof shape)
+      for (let r = 0; r < 3; r++) {
+        const roofLayer = new THREE.Mesh(
+          new THREE.BoxGeometry(houseW + 0.2 - r * 0.3, 0.12, houseD + 0.3 - r * 0.5),
+          stdMat(roofCol, 0.8),
+        );
+        roofLayer.position.y = wallH + 0.06 + r * 0.12;
+        houseGroup.add(roofLayer);
+      }
+      // Front door
       const hDoor = new THREE.Mesh(
-        new THREE.BoxGeometry(0.3, 0.5, 0.02),
+        new THREE.BoxGeometry(0.35, 0.65, 0.03),
         stdMat("#5A3A20"),
       );
-      hDoor.position.set(0, 0.3, -0.76);
+      hDoor.position.set(0, 0.35, -houseD / 2 - 0.01);
       houseGroup.add(hDoor);
-      // Windows
-      for (const wx2 of [-0.6, 0.6]) {
+      // Windows (front face) — opaque frames with glass
+      const winSpacing = houseW * 0.25;
+      for (const wx2 of [-winSpacing, winSpacing]) {
+        // Frame
+        const wFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(0.4, 0.35, 0.04),
+          stdMat("#E8E0D0", 0.7),
+        );
+        wFrame.position.set(wx2, wallH * 0.55, -houseD / 2 - 0.01);
+        houseGroup.add(wFrame);
+        // Glass
         const hWin = new THREE.Mesh(
-          new THREE.BoxGeometry(0.25, 0.25, 0.02),
+          new THREE.BoxGeometry(0.3, 0.25, 0.02),
           new THREE.MeshStandardMaterial({
-            color: "#A8D8EA", roughness: 0.1, transparent: true, opacity: 0.5,
-            emissive: "#88B8D8", emissiveIntensity: 0.1,
+            color: "#A8D8EA", roughness: 0.1,
+            emissive: "#88B8D8", emissiveIntensity: 0.15,
           }),
         );
-        hWin.position.set(wx2, 0.55, -0.76);
+        hWin.position.set(wx2, wallH * 0.55, -houseD / 2 - 0.02);
         houseGroup.add(hWin);
       }
+      // Side windows
+      for (const sx of [-houseW / 2 - 0.01, houseW / 2 + 0.01]) {
+        for (let sy = 0; sy < 2; sy++) {
+          const sWin = new THREE.Mesh(
+            new THREE.BoxGeometry(0.03, 0.3, 0.35),
+            new THREE.MeshStandardMaterial({
+              color: "#A8D8EA", roughness: 0.1,
+              emissive: "#88B8D8", emissiveIntensity: 0.1,
+            }),
+          );
+          sWin.position.set(sx, wallH * 0.55, -houseD * 0.15 + sy * houseD * 0.35);
+          houseGroup.add(sWin);
+        }
+      }
+      // Garage door on one house
+      if (hx > 0) {
+        const garage = new THREE.Mesh(
+          new THREE.BoxGeometry(0.7, 0.55, 0.03),
+          stdMat("#A0907A", 0.8),
+        );
+        garage.position.set(-winSpacing * 1.5, 0.3, -houseD / 2 - 0.01);
+        houseGroup.add(garage);
+      }
+      // Small yard fence in front
+      const yardFence = new THREE.Mesh(
+        new THREE.BoxGeometry(houseW * 1.1, 0.3, 0.04),
+        stdMat(palette.fence, 0.7),
+      );
+      yardFence.position.set(0, 0.15, -houseD / 2 - 0.8);
+      houseGroup.add(yardFence);
+
       houseGroup.position.set(hx, 0, hz);
       houseGroup.castShadow = true;
       this.scene.add(houseGroup);
@@ -1997,6 +2059,9 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 1 / 30);
     this.frame++;
 
+    // Animate outdoor objects (always, regardless of game state)
+    this.updateOutdoor(dt);
+
     if (this.caught) {
       this.renderer.render(this.scene, this.camera);
       return;
@@ -2076,6 +2141,34 @@ export class Game {
 
     this.renderer.render(this.scene, this.camera);
   };
+
+  private updateOutdoor(dt: number) {
+    // Animate driving cars
+    for (const car of this.outdoorCars) {
+      car.group.position.x += car.speed * dt;
+      // Wrap around when going off-screen
+      if (car.speed > 0 && car.group.position.x > car.maxX) {
+        car.group.position.x = car.minX;
+      } else if (car.speed < 0 && car.group.position.x < car.minX) {
+        car.group.position.x = car.maxX;
+      }
+    }
+    // Animate walking people
+    const time = this.frame * 0.03;
+    for (const person of this.outdoorPeople) {
+      person.group.position.x += person.speed * dt;
+      // Wrap around
+      if (person.speed > 0 && person.group.position.x > person.maxX) {
+        person.group.position.x = person.minX;
+      } else if (person.speed < 0 && person.group.position.x < person.minX) {
+        person.group.position.x = person.maxX;
+      }
+      // Leg swing animation
+      const swing = Math.sin(time * 4) * 0.35;
+      person.leftLeg.rotation.x = swing;
+      person.rightLeg.rotation.x = -swing;
+    }
+  }
 
   private updateMom(dt: number) {
     if (!this.momPath || this.momPathIdx >= this.momPath.length) {
