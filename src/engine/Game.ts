@@ -462,6 +462,21 @@ export class Game {
 
       this.buildFurnitureShape(g, f, palette);
 
+      // Make furniture semi-transparent if it hides walkable tiles (same rule as walls)
+      if (this.furnitureHidesTiles(f, lvl.grid.w, lvl.grid.h)) {
+        g.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const mat = child.material;
+            if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshToonMaterial) {
+              mat.transparent = true;
+              mat.opacity = 0.35;
+              mat.depthWrite = false;
+            }
+            child.renderOrder = 1;
+          }
+        });
+      }
+
       if (f.hasDecoy) {
         const glowGeo = new THREE.SphereGeometry(0.07, 8, 8);
         const glowMat = new THREE.MeshStandardMaterial({
@@ -477,6 +492,27 @@ export class Game {
       this.scene.add(g);
       this.furnitureGroups.push(g);
     }
+  }
+
+  /** Check if furniture hides walkable tiles from isometric camera (+X, +Y, +Z). */
+  private furnitureHidesTiles(f: FurnitureDef, W: number, H: number): boolean {
+    // Check north edge: tiles at z = f.z - 1
+    for (let dx = 0; dx < f.w; dx++) {
+      const nx = f.x + dx;
+      const nz = f.z - 1;
+      if (nz >= 0 && nz < H && nx >= 0 && nx < W && !this.blocked.has(`${nx},${nz}`)) {
+        return true;
+      }
+    }
+    // Check west edge: tiles at x = f.x - 1
+    for (let dz = 0; dz < f.h; dz++) {
+      const nx = f.x - 1;
+      const nz = f.z + dz;
+      if (nz >= 0 && nz < H && nx >= 0 && nx < W && !this.blocked.has(`${nx},${nz}`)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private buildFurnitureShape(
