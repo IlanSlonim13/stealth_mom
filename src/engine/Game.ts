@@ -462,17 +462,23 @@ export class Game {
 
       this.buildFurnitureShape(g, f, palette);
 
-      // Make furniture semi-transparent if it hides walkable tiles (same rule as walls)
+      // Make upper portions of furniture semi-transparent if it hides walkable tiles
+      // Floor-level parts (seats, bases) stay opaque; only tall parts (backs, arms) go transparent
       if (this.furnitureHidesTiles(f, lvl.grid.w, lvl.grid.h)) {
         g.traverse((child) => {
           if (child instanceof THREE.Mesh) {
-            const mat = child.material;
-            if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshToonMaterial) {
-              mat.transparent = true;
-              mat.opacity = 0.35;
-              mat.depthWrite = false;
+            const geo = child.geometry;
+            if (!geo.boundingBox) geo.computeBoundingBox();
+            const meshTop = child.position.y + (geo.boundingBox?.max.y ?? 0);
+            if (meshTop > 0.35) {
+              const mat = child.material;
+              if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshToonMaterial) {
+                mat.transparent = true;
+                mat.opacity = 0.35;
+                mat.depthWrite = false;
+              }
+              child.renderOrder = 1;
             }
-            child.renderOrder = 1;
           }
         });
       }
