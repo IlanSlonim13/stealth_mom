@@ -70,6 +70,11 @@ interface NpcState {
   lureTimer: number;
   // summoned chaser (Level 4)
   chasing?: boolean;
+  // limb references for walk animation
+  leftLeg?: THREE.Object3D;
+  rightLeg?: THREE.Object3D;
+  leftArm?: THREE.Object3D;
+  rightArm?: THREE.Object3D;
 }
 
 export interface GameCallbacks {
@@ -99,6 +104,10 @@ export class Game {
   private momPathIdx = 0;
   private momHead: THREE.Object3D | null = null;
   private momLower: THREE.Object3D | null = null;
+  private momLeftLeg: THREE.Object3D | null = null;
+  private momRightLeg: THREE.Object3D | null = null;
+  private momLeftArm: THREE.Object3D | null = null;
+  private momRightArm: THREE.Object3D | null = null;
 
   private goalRing!: THREE.Mesh;
   private traps: TrapState[] = [];
@@ -1880,27 +1889,79 @@ export class Game {
       return m;
     };
 
-    // Pants
-    const pants = addMesh(new THREE.CylinderGeometry(0.15, 0.18, 0.5, 8), outfit.pantsColor, 0.25);
-    this.momLower = pants;
+    // Legs (two separate cylinders, pivoting from hip)
+    const legMat = new THREE.MeshToonMaterial({ color: outfit.pantsColor });
+    const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.3, 6), legMat);
+    leftLeg.position.set(-0.07, 0.15, 0);
+    leftLeg.castShadow = true;
+    g.add(leftLeg);
+    this.momLeftLeg = leftLeg;
+
+    const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.3, 6), legMat);
+    rightLeg.position.set(0.07, 0.15, 0);
+    rightLeg.castShadow = true;
+    g.add(rightLeg);
+    this.momRightLeg = rightLeg;
+
+    // Shoes
+    const shoeMat = new THREE.MeshToonMaterial({ color: "#3A2A1A" });
+    const shoeL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), shoeMat);
+    shoeL.position.set(-0.07, 0.01, 0.01);
+    g.add(shoeL);
+    const shoeR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), shoeMat);
+    shoeR.position.set(0.07, 0.01, 0.01);
+    g.add(shoeR);
+
+    // Hips / waist connector
+    addMesh(new THREE.CylinderGeometry(0.13, 0.14, 0.12, 8), outfit.pantsColor, 0.36);
+    this.momLower = leftLeg; // keep for backward compat
 
     // Top — shape varies
     let headY = 0.92;
+    let shoulderY = 0.7;
     switch (outfit.topStyle) {
       case "fitted":
-        addMesh(new THREE.CylinderGeometry(0.13, 0.14, 0.25, 8), outfit.topColor, 0.63);
-        headY = 0.88; break;
+        addMesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 8), outfit.topColor, 0.57);
+        headY = 0.85; shoulderY = 0.65; break;
       case "oversized":
-        addMesh(new THREE.CylinderGeometry(0.17, 0.16, 0.35, 8), outfit.topColor, 0.68);
-        headY = 0.95; break;
+        addMesh(new THREE.CylinderGeometry(0.16, 0.14, 0.35, 8), outfit.topColor, 0.60);
+        headY = 0.90; shoulderY = 0.70; break;
       case "robe":
-        addMesh(new THREE.CylinderGeometry(0.19, 0.18, 0.42, 8), outfit.topColor, 0.71);
-        headY = 1.0; break;
+        addMesh(new THREE.CylinderGeometry(0.17, 0.15, 0.42, 8), outfit.topColor, 0.63);
+        headY = 0.95; shoulderY = 0.75; break;
       case "nightgown":
-        addMesh(new THREE.CylinderGeometry(0.14, 0.15, 0.3, 8), outfit.topColor, 0.65);
-        addMesh(new THREE.CylinderGeometry(0.16, 0.2, 0.15, 8), outfit.topColor, 0.45); // skirt
-        headY = 0.88; break;
+        addMesh(new THREE.CylinderGeometry(0.14, 0.13, 0.3, 8), outfit.topColor, 0.57);
+        addMesh(new THREE.CylinderGeometry(0.15, 0.18, 0.15, 8), outfit.topColor, 0.38); // skirt over legs
+        headY = 0.85; shoulderY = 0.65; break;
     }
+
+    // Arms (cylinders hanging from shoulders, pivoting)
+    const armMat = new THREE.MeshToonMaterial({ color: outfit.topColor });
+    const skinMat = new THREE.MeshToonMaterial({ color: "#F5D0B0" });
+
+    const leftArm = new THREE.Group();
+    const upperArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.2, 5), armMat);
+    upperArmL.position.y = -0.1;
+    leftArm.add(upperArmL);
+    const foreArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
+    foreArmL.position.y = -0.22;
+    leftArm.add(foreArmL);
+    leftArm.position.set(-0.17, shoulderY, 0);
+    leftArm.castShadow = true;
+    g.add(leftArm);
+    this.momLeftArm = leftArm;
+
+    const rightArm = new THREE.Group();
+    const upperArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.2, 5), armMat);
+    upperArmR.position.y = -0.1;
+    rightArm.add(upperArmR);
+    const foreArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
+    foreArmR.position.y = -0.22;
+    rightArm.add(foreArmR);
+    rightArm.position.set(0.17, shoulderY, 0);
+    rightArm.castShadow = true;
+    g.add(rightArm);
+    this.momRightArm = rightArm;
 
     // Head
     const head = addMesh(new THREE.SphereGeometry(0.13, 8, 8), "#F5D0B0", headY);
@@ -2094,26 +2155,62 @@ export class Game {
 
     } else if (type === "toddler") {
       const bodyMat = new THREE.MeshToonMaterial({ color: "#6CB4EE" });
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.25, 8), bodyMat);
-      b.position.y = 0.13; b.castShadow = true;
+      const tSkinMat = new THREE.MeshToonMaterial({ color: "#F5D8C0" });
+
+      // Legs
+      const tLeftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.15, 5), bodyMat);
+      tLeftLeg.position.set(-0.05, 0.08, 0); tLeftLeg.castShadow = true;
+      group.add(tLeftLeg);
+      const tRightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.15, 5), bodyMat);
+      tRightLeg.position.set(0.05, 0.08, 0); tRightLeg.castShadow = true;
+      group.add(tRightLeg);
+
+      // Shoes
+      const tShoeMat = new THREE.MeshToonMaterial({ color: "#FF6B6B" });
+      const tShoeL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.025, 0.06), tShoeMat);
+      tShoeL.position.set(-0.05, 0.01, 0.01); group.add(tShoeL);
+      const tShoeR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.025, 0.06), tShoeMat);
+      tShoeR.position.set(0.05, 0.01, 0.01); group.add(tShoeR);
+
+      // Body (torso)
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.18, 8), bodyMat);
+      b.position.y = 0.24; b.castShadow = true;
       group.add(b);
-      const h2 = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8),
-        new THREE.MeshToonMaterial({ color: "#F5D8C0" }));
-      h2.position.y = 0.42; h2.castShadow = true;
+
+      // Arms
+      const tLeftArm = new THREE.Group();
+      const tArmUL = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 0.12, 5), bodyMat);
+      tArmUL.position.y = -0.06; tLeftArm.add(tArmUL);
+      const tHandL = new THREE.Mesh(new THREE.SphereGeometry(0.022, 5, 5), tSkinMat);
+      tHandL.position.y = -0.13; tLeftArm.add(tHandL);
+      tLeftArm.position.set(-0.12, 0.30, 0);
+      group.add(tLeftArm);
+
+      const tRightArm = new THREE.Group();
+      const tArmUR = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 0.12, 5), bodyMat);
+      tArmUR.position.y = -0.06; tRightArm.add(tArmUR);
+      const tHandR = new THREE.Mesh(new THREE.SphereGeometry(0.022, 5, 5), tSkinMat);
+      tHandR.position.y = -0.13; tRightArm.add(tHandR);
+      tRightArm.position.set(0.12, 0.30, 0);
+      group.add(tRightArm);
+
+      // Head (proportionally large for a toddler)
+      const h2 = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), tSkinMat);
+      h2.position.y = 0.50; h2.castShadow = true;
       group.add(h2);
 
       // Eyes (on +Z face so they face movement direction)
       const tEyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
       const tEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), tEyeMat);
-      tEyeL.position.set(-0.06, 0.44, 0.13);
+      tEyeL.position.set(-0.06, 0.52, 0.13);
       group.add(tEyeL);
       const tEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), tEyeMat);
-      tEyeR.position.set(0.06, 0.44, 0.13);
+      tEyeR.position.set(0.06, 0.52, 0.13);
       group.add(tEyeR);
 
       const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4),
         new THREE.MeshToonMaterial({ color: "#DEB887" }));
-      tuft.position.y = 0.58;
+      tuft.position.y = 0.66;
       group.add(tuft);
 
       const coneLen = TODDLER_CONE_RANGE * TILE_SIZE;
@@ -2156,27 +2253,77 @@ export class Game {
         lured: chasing, lureTarget: chasing ? { x: this.momPos.x, z: this.momPos.z } : null,
         lureTimer: 0, chasing,
         lastBubbleChange: 0, bubbleTextIdx: babyIdx,
+        leftLeg: tLeftLeg, rightLeg: tRightLeg, leftArm: tLeftArm, rightArm: tRightArm,
       };
       this.npcs.push(npc);
       return npc;
 
     } else { // husband
-      const b3 = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.55, 8),
-        new THREE.MeshToonMaterial({ color: "#4A5568" }));
-      b3.position.y = 0.28; b3.castShadow = true;
+      const hBodyMat = new THREE.MeshToonMaterial({ color: "#4A5568" });
+      const hSkinMat = new THREE.MeshToonMaterial({ color: "#E8C8A0" });
+      const hPantsMat = new THREE.MeshToonMaterial({ color: "#3A4A5A" });
+
+      // Legs
+      const hLeftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.35, 6), hPantsMat);
+      hLeftLeg.position.set(-0.08, 0.18, 0); hLeftLeg.castShadow = true;
+      group.add(hLeftLeg);
+      const hRightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.35, 6), hPantsMat);
+      hRightLeg.position.set(0.08, 0.18, 0); hRightLeg.castShadow = true;
+      group.add(hRightLeg);
+
+      // Shoes
+      const hShoeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
+      const hShoeL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.035, 0.1), hShoeMat);
+      hShoeL.position.set(-0.08, 0.01, 0.01); group.add(hShoeL);
+      const hShoeR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.035, 0.1), hShoeMat);
+      hShoeR.position.set(0.08, 0.01, 0.01); group.add(hShoeR);
+
+      // Waist
+      const hWaist = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.15, 0.1, 8), hPantsMat);
+      hWaist.position.y = 0.40; hWaist.castShadow = true;
+      group.add(hWaist);
+
+      // Torso (shirt)
+      const b3 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.3, 8), hBodyMat);
+      b3.position.y = 0.60; b3.castShadow = true;
       group.add(b3);
-      const h3 = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8),
-        new THREE.MeshToonMaterial({ color: "#E8C8A0" }));
-      h3.position.y = 0.7; h3.castShadow = true;
+
+      // Arms
+      const hLeftArm = new THREE.Group();
+      const hArmUL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.22, 5), hBodyMat);
+      hArmUL.position.y = -0.11; hLeftArm.add(hArmUL);
+      const hForeL = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.03, 0.15, 5), hSkinMat);
+      hForeL.position.y = -0.25; hLeftArm.add(hForeL);
+      hLeftArm.position.set(-0.19, 0.70, 0);
+      group.add(hLeftArm);
+
+      const hRightArm = new THREE.Group();
+      const hArmUR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.22, 5), hBodyMat);
+      hArmUR.position.y = -0.11; hRightArm.add(hArmUR);
+      const hForeR = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.03, 0.15, 5), hSkinMat);
+      hForeR.position.y = -0.25; hRightArm.add(hForeR);
+      hRightArm.position.set(0.19, 0.70, 0);
+      group.add(hRightArm);
+
+      // Head
+      const h3 = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), hSkinMat);
+      h3.position.y = 0.90; h3.castShadow = true;
       group.add(h3);
+
+      // Short hair
+      const hHairMat = new THREE.MeshToonMaterial({ color: "#3A2A1A" });
+      const hHair = new THREE.Mesh(new THREE.SphereGeometry(0.145, 8, 4), hHairMat);
+      hHair.scale.y = 0.4;
+      hHair.position.set(0, 0.97, -0.02);
+      group.add(hHair);
 
       // Eyes (on +Z face so they face movement direction)
       const hEyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
       const hEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), hEyeMat);
-      hEyeL.position.set(-0.05, 0.72, 0.12);
+      hEyeL.position.set(-0.05, 0.92, 0.12);
       group.add(hEyeL);
       const hEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), hEyeMat);
-      hEyeR.position.set(0.05, 0.72, 0.12);
+      hEyeR.position.set(0.05, 0.92, 0.12);
       group.add(hEyeR);
 
       const coneLen2 = HUSBAND_CONE_RANGE * TILE_SIZE;
@@ -2206,7 +2353,7 @@ export class Game {
       dadText.position.set(0, 0.04, 0);
       dadText.name = "bubbleText";
       tbGroup.add(dadText);
-      tbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.35, 1.2, (spawnZ - this.cz) * TILE_SIZE);
+      tbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.35, 1.4, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(tbGroup);
 
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
@@ -2218,6 +2365,7 @@ export class Game {
         coneRange: HUSBAND_CONE_RANGE, coneAngle: HUSBAND_CONE_ANGLE, speed: HUSBAND_SPEED,
         lured: false, lureTarget: null, lureTimer: 0,
         lastBubbleChange: 0, bubbleTextIdx: dadIdx,
+        leftLeg: hLeftLeg, rightLeg: hRightLeg, leftArm: hLeftArm, rightArm: hRightArm,
       };
       this.npcs.push(npc);
       return npc;
@@ -2422,8 +2570,12 @@ export class Game {
 
   private updateMom(dt: number) {
     if (!this.momPath || this.momPathIdx >= this.momPath.length) {
-      // Idle sway
+      // Idle — reset limbs and add gentle sway
       if (this.momHead) this.momHead.position.y += Math.sin(this.frame * 0.015) * 0.0005;
+      if (this.momLeftLeg) this.momLeftLeg.rotation.x *= 0.9;
+      if (this.momRightLeg) this.momRightLeg.rotation.x *= 0.9;
+      if (this.momLeftArm) this.momLeftArm.rotation.x *= 0.9;
+      if (this.momRightArm) this.momRightArm.rotation.x *= 0.9;
       return;
     }
 
@@ -2449,10 +2601,14 @@ export class Game {
       (this.momPos.z - this.cz) * TILE_SIZE,
     );
 
-    // Walking bob
+    // Walking animation — leg/arm swing + head bob
     const f = this.frame;
-    if (this.momLower) this.momLower.position.y = 0.25 + Math.sin(f * 0.3) * 0.02;
-    if (this.momHead)  this.momHead.position.y  += Math.sin(f * 0.3 + 1) * 0.0005;
+    const swing = Math.sin(f * 0.25) * 0.4;
+    if (this.momLeftLeg) this.momLeftLeg.rotation.x = swing;
+    if (this.momRightLeg) this.momRightLeg.rotation.x = -swing;
+    if (this.momLeftArm) this.momLeftArm.rotation.x = -swing * 0.7;
+    if (this.momRightArm) this.momRightArm.rotation.x = swing * 0.7;
+    if (this.momHead) this.momHead.position.y += Math.sin(f * 0.5) * 0.001;
 
     if (f % 8 === 0) AudioManager.play("footstep-soft");
 
@@ -2604,18 +2760,48 @@ export class Game {
       }
 
       npc.group.position.set((npc.pos.x - this.cx) * TILE_SIZE, TILE_H, (npc.pos.z - this.cz) * TILE_SIZE);
+
+      // Determine if NPC is moving (for walk animation)
+      const isMoving = (npc.lured && npc.lureTarget) || (npc.patrol && npc.patrolTimer === 0);
+
       if (npc.type === "toddler") {
         npc.group.rotation.y = npc.facing;
         npc.group.rotation.z = Math.sin(this.frame * 0.15) * 0.08;
+        // Toddler waddle — fast, exaggerated swing
+        if (isMoving) {
+          const tSwing = Math.sin(this.frame * 0.3) * 0.5;
+          if (npc.leftLeg) npc.leftLeg.rotation.x = tSwing;
+          if (npc.rightLeg) npc.rightLeg.rotation.x = -tSwing;
+          if (npc.leftArm) npc.leftArm.rotation.x = -tSwing * 0.6;
+          if (npc.rightArm) npc.rightArm.rotation.x = tSwing * 0.6;
+        } else {
+          if (npc.leftLeg) npc.leftLeg.rotation.x *= 0.9;
+          if (npc.rightLeg) npc.rightLeg.rotation.x *= 0.9;
+          if (npc.leftArm) npc.leftArm.rotation.x *= 0.9;
+          if (npc.rightArm) npc.rightArm.rotation.x *= 0.9;
+        }
       } else if (npc.type === "husband") {
         npc.group.rotation.y = npc.facing;
+        // Husband walk — slower, more deliberate
+        if (isMoving) {
+          const hSwing = Math.sin(this.frame * 0.2) * 0.35;
+          if (npc.leftLeg) npc.leftLeg.rotation.x = hSwing;
+          if (npc.rightLeg) npc.rightLeg.rotation.x = -hSwing;
+          if (npc.leftArm) npc.leftArm.rotation.x = -hSwing * 0.5;
+          if (npc.rightArm) npc.rightArm.rotation.x = hSwing * 0.5;
+        } else {
+          if (npc.leftLeg) npc.leftLeg.rotation.x *= 0.9;
+          if (npc.rightLeg) npc.rightLeg.rotation.x *= 0.9;
+          if (npc.leftArm) npc.leftArm.rotation.x *= 0.9;
+          if (npc.rightArm) npc.rightArm.rotation.x *= 0.9;
+        }
       }
       if (npc.coneMesh) {
         npc.coneMesh.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.04, (npc.pos.z - this.cz) * TILE_SIZE);
         npc.coneMesh.rotation.z = -(npc.facing - Math.PI / 2);
       }
       if (npc.thoughtBubble) {
-        const bubbleY = npc.type === "toddler" ? 0.9 : 1.2;
+        const bubbleY = npc.type === "toddler" ? 0.9 : 1.4;
         const bubbleX = npc.type === "toddler" ? 0.3 : 0.35;
         npc.thoughtBubble.position.set(
           (npc.pos.x - this.cx) * TILE_SIZE + bubbleX,
