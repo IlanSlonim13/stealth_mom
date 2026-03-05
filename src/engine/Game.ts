@@ -169,7 +169,7 @@ export class Game {
 
     // Camera — start zoomed in for intro, animate out later
     const aspect = el.clientWidth / el.clientHeight;
-    this.introFrustEnd = Math.max(W, H) * TILE_SIZE * 0.65;
+    this.introFrustEnd = Math.max(W, H) * TILE_SIZE * 0.65 / Math.min(aspect, 1);
     this.introFrustStart = this.introFrustEnd * 0.15;
     this.frust = this.introFrustStart;
     const f = this.frust;
