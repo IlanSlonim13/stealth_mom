@@ -114,6 +114,9 @@ export class Game {
   private introFrustStart = 1;
   private introFrustEnd = 7;
   private introCompleteCallback: (() => void) | null = null;
+  private relaxZoomPhase = false;
+  private relaxZoomElapsed = 0;
+  private relaxZoomCallback: (() => void) | null = null;
   private summoned = false;
   private decoyMesh: THREE.Group | null = null;
   private pickedUpItems = new Set<string>();
@@ -1335,7 +1338,25 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 1 / 30);
     this.frame++;
 
-    if (this.caught || this.won) {
+    if (this.caught) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
+    // Relax zoom-in phase (after winning, zoom back in on Mom)
+    if (this.won) {
+      if (this.relaxZoomPhase) {
+        this.relaxZoomElapsed += dt;
+        const zoomT = Math.min(this.relaxZoomElapsed / INTRO_ZOOM_SECS, 1);
+        const eased = easeOutQuad(zoomT);
+        this.frust = lerp(this.introFrustEnd, this.introFrustStart, eased);
+        this.updateFrustum();
+        if (zoomT >= 1) {
+          this.relaxZoomPhase = false;
+          this.relaxZoomCallback?.();
+          this.callbacks.onWon(this.level.winText);
+        }
+      }
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -1649,7 +1670,9 @@ export class Game {
     ) {
       this.won = true;
       AudioManager.play("success");
-      setTimeout(() => this.callbacks.onWon(lvl.winText), WIN_DELAY_MS);
+      AudioManager.stopAmbient();
+      this.relaxZoomPhase = true;
+      this.relaxZoomElapsed = 0;
     }
   }
 
@@ -1673,6 +1696,10 @@ export class Game {
 
   setIntroCompleteCallback(cb: () => void) {
     this.introCompleteCallback = cb;
+  }
+
+  setRelaxZoomCallback(cb: () => void) {
+    this.relaxZoomCallback = cb;
   }
 
   handleTap(clientX: number, clientY: number, decoyMode: false | "throw"): false | "thrown" {

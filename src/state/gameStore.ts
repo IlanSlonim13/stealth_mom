@@ -14,6 +14,7 @@ interface GameState {
   inventory: string[];       // item names currently held (max 1)
   nearPickup: string | null; // item name Mom is near (for HUD prompt)
   introActive: boolean;      // true while intro zoom is playing
+  relaxActive: boolean;      // true when post-level relaxation overlay is showing
 
   startLevel: (idx: number) => void;
   setScreen: (screen: Screen) => void;
@@ -25,6 +26,7 @@ interface GameState {
   pickUpDecoy: (itemName: string) => void;
   throwDecoy: () => void;
   setIntroActive: (v: boolean) => void;
+  setRelaxActive: (v: boolean) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -37,12 +39,14 @@ export const useGameStore = create<GameState>((set) => ({
   inventory: [],
   nearPickup: null,
   introActive: false,
+  relaxActive: false,
 
   startLevel: (idx) => {
     set({
       levelIdx: idx,
       screen: "game",
       introActive: true,
+      relaxActive: false,
       decoyMode: false,
       decoysLeft: LEVELS[idx].decoys ?? 0,
       inventory: [],
@@ -70,4 +74,5 @@ export const useGameStore = create<GameState>((set) => ({
   throwDecoy: () => set({ decoyMode: false, inventory: [] }),
 
   setIntroActive: (v) => set({ introActive: v }),
+  setRelaxActive: (v) => set({ relaxActive: v }),
 }));
