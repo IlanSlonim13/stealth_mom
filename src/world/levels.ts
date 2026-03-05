@@ -88,35 +88,50 @@ export const LEVELS: LevelData[] = [
       [28,33],[29,33],
     ],
     furniture: [
-      // --- Living Room (x=2..27, z=2..33) ---
-      { x:10, z:4, w:8, h:4, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
-      { x:10, z:16, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch"              },
-      { x:6, z:16, w:4, h:4, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"     },
-      { x:6, z:22, w:4, h:4, label:"lamp",            col:"#D4AF37", shape:"lamp"               },
-      { x:4, z:10, w:4, h:4, label:"shelf",           col:"#8B5A2B", shape:"shelf", hasDecoy:true },
-      { x:12, z:12, w:4, h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"        },
-      { x:20, z:16, w:4, h:4, label:"ottoman",         col:"#8B6F5C", shape:"ottoman"            },
-      { x:4, z:28, w:4, h:4, label:"bookcase",        col:"#8B5A2B", shape:"bookcase"           },
-      { x:20, z:4, w:4, h:4, label:"clock",           col:"#C0C0C0", shape:"clock"              },
-      // Living room extras: pictures, flowers, curtains, rug
-      { x:4, z:4, w:4, h:4, label:"curtains1",       col:"#C4956A", shape:"curtains"            },
-      { x:24, z:4, w:4, h:4, label:"pictureFrame1",   col:"#5A8A6A", shape:"pictureFrame"        },
-      { x:20, z:10, w:4, h:4, label:"flowerVase1",    col:"#B0C4DE", shape:"flowerVase"          },
-      { x:4, z:16, w:2, h:4, label:"lamp2",           col:"#D4AF37", shape:"lamp"               },
-      { x:10, z:28, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"              },
-      { x:20, z:28, w:4, h:4, label:"pictureFrame2",  col:"#8A5A4A", shape:"pictureFrame"        },
-      { x:16, z:28, w:4, h:4, label:"rugDecor1",      col:"#A08060", shape:"rugDecor"            },
-      // --- Hallway (x=30..41, z=2..33) ---
-      { x:32, z:4, w:4, h:4, label:"hallPlant",       col:"#4A7A4A", shape:"plant"              },
-      { x:32, z:20, w:4, h:4, label:"table",           col:"#5C3A1E", shape:"table"              },
-      { x:32, z:28, w:4, h:4, label:"hallToys",        col:"#E06040", shape:"toys"               },
-      { x:38, z:4, w:4, h:4, label:"hallMirror",      col:"#C0D0E0", shape:"mirror"             },
-      { x:38, z:12, w:4, h:4, label:"coatRack1",      col:"#5A3A20", shape:"coatRack"           },
-      { x:38, z:20, w:4, h:4, label:"hallPicture",    col:"#6A4A7A", shape:"pictureFrame"        },
-      { x:38, z:28, w:4, h:4, label:"hallLamp",       col:"#D4AF37", shape:"lamp"               },
-      { x:32, z:12, w:4, h:4, label:"hallRugDecor",   col:"#8B7060", shape:"rugDecor"            },
+      // ─── Living Room: "Classic Den" layout ───
+      // NORTH WALL — TV as focal point, flanked by curtains + clock
+      { x:4,  z:2,  w:4,  h:4, label:"curtains1",     col:"#C4956A", shape:"curtains"            },
+      { x:10, z:2,  w:8,  h:4, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
+      { x:20, z:2,  w:4,  h:4, label:"clock",          col:"#C0C0C0", shape:"clock"               },
+      { x:24, z:2,  w:4,  h:4, label:"pictureFrame1",  col:"#5A8A6A", shape:"pictureFrame"        },
+
+      // LEFT WALL — shelf (decoy) + standing lamp
+      { x:4,  z:8,  w:4,  h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
+      { x:4,  z:14, w:4,  h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
+
+      // CENTER — coffee table on rug between TV and couch
+      { x:12, z:10, w:4,  h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"         },
+
+      // SEATING — couch facing TV with side table (wine glass) + ottoman
+      { x:10, z:16, w:8,  h:4, label:"couch",          col:"#8B6F5C", shape:"couch"               },
+      { x:6,  z:18, w:4,  h:4, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
+      { x:20, z:16, w:4,  h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
+
+      // RIGHT SIDE — flower vase + wall picture
+      { x:20, z:8,  w:4,  h:4, label:"flowerVase1",    col:"#B0C4DE", shape:"flowerVase"          },
+      { x:24, z:16, w:4,  h:4, label:"pictureFrame3",  col:"#8A6A5A", shape:"pictureFrame"        },
+
+      // READING NOOK — bottom-left cozy corner (bookcase + armchair + lamp)
+      { x:4,  z:26, w:4,  h:4, label:"bookcase",       col:"#8B5A2B", shape:"bookcase"            },
+      { x:10, z:26, w:4,  h:4, label:"armchair",       col:"#7A5A4A", shape:"ottoman"             },
+      { x:4,  z:30, w:4,  h:4, label:"readingLamp",    col:"#D4AF37", shape:"lamp"                },
+      { x:10, z:30, w:4,  h:4, label:"rugDecor1",      col:"#A08060", shape:"rugDecor"            },
+
+      // SOUTH AREA — plant + picture on south wall
+      { x:16, z:26, w:4,  h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
+      { x:22, z:26, w:4,  h:4, label:"pictureFrame2",  col:"#8A5A4A", shape:"pictureFrame"        },
+
+      // ─── Hallway ───
+      { x:32, z:4,  w:4,  h:4, label:"hallPlant",      col:"#4A7A4A", shape:"plant"               },
+      { x:38, z:4,  w:4,  h:4, label:"hallMirror",     col:"#C0D0E0", shape:"mirror"              },
+      { x:32, z:12, w:4,  h:4, label:"hallRugDecor",   col:"#8B7060", shape:"rugDecor"            },
+      { x:38, z:12, w:4,  h:4, label:"coatRack1",      col:"#5A3A20", shape:"coatRack"            },
+      { x:32, z:20, w:4,  h:4, label:"table",          col:"#5C3A1E", shape:"table"               },
+      { x:38, z:20, w:4,  h:4, label:"hallPicture",    col:"#6A4A7A", shape:"pictureFrame"        },
+      { x:32, z:28, w:4,  h:4, label:"hallToys",       col:"#E06040", shape:"toys"                },
+      { x:38, z:28, w:4,  h:4, label:"hallLamp",       col:"#D4AF37", shape:"lamp"                },
     ],
-    rug: { x:8, z:8, w:12, h:8 },
+    rug: { x:8, z:8, w:14, h:12 },
     playerStart: { x:36, z:24 },
     goal: { x:16, z:20, label:"The Couch" },
     npcs: [
