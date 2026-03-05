@@ -574,60 +574,63 @@ export class Game {
       }
     });
 
-    // ── Neighbor houses (same scale as player's house, fully opaque) ──
-    // Player house width ~ W * TS, height ~ 1.5 (wall height)
-    const houseW = W * TS * 0.55;
-    const houseD = H * TS * 0.4;
+    // ── Neighbor houses ──
+    // House dimensions — close to player house size
+    const houseW = W * TS * 0.7;
+    const houseD = H * TS * 0.5;
     const wallH = 1.5;
-    const housePositions: [number, number, string, string][] = [
-      [fenceMinX - houseW * 0.7, roadZ + 3 + houseD / 2, "#D4C4A8", "#8B4A2A"],
-      [0, roadZ + 3.5 + houseD / 2, "#C0B8A0", "#6A3A1A"],
-      [fenceMaxX + houseW * 0.7, roadZ + 3 + houseD / 2, "#E0D0B8", "#7A5A3A"],
-    ];
-    housePositions.forEach(([hx, hz, wallCol, roofCol]) => {
+
+    const winGlassMat = new THREE.MeshStandardMaterial({
+      color: "#A8D8EA", roughness: 0.1,
+      emissive: "#88B8D8", emissiveIntensity: 0.15,
+    });
+    const sideWinMat = new THREE.MeshStandardMaterial({
+      color: "#A8D8EA", roughness: 0.1,
+      emissive: "#88B8D8", emissiveIntensity: 0.1,
+    });
+
+    const buildNeighborHouse = (hx: number, hz: number, wallCol: string, roofCol: string, faceFront: boolean) => {
       const houseGroup = new THREE.Group();
-      // House body — fully opaque
+      // House body
       const hBody = new THREE.Mesh(
         new THREE.BoxGeometry(houseW, wallH, houseD),
         stdMat(wallCol, 0.85),
       );
       hBody.position.y = wallH / 2;
       houseGroup.add(hBody);
-      // Roof layers (stepped for a roof shape)
-      for (let r = 0; r < 3; r++) {
+      // Roof layers (stepped)
+      for (let r = 0; r < 4; r++) {
         const roofLayer = new THREE.Mesh(
-          new THREE.BoxGeometry(houseW + 0.2 - r * 0.3, 0.12, houseD + 0.3 - r * 0.5),
+          new THREE.BoxGeometry(houseW + 0.3 - r * 0.35, 0.12, houseD + 0.4 - r * 0.5),
           stdMat(roofCol, 0.8),
         );
         roofLayer.position.y = wallH + 0.06 + r * 0.12;
         houseGroup.add(roofLayer);
       }
-      // Front door
+      // Front face (facing road = -z if same side, +z if behind)
+      const frontZ = faceFront ? -houseD / 2 - 0.01 : houseD / 2 + 0.01;
+      const frontSign = faceFront ? -1 : 1;
+      // Door
       const hDoor = new THREE.Mesh(
         new THREE.BoxGeometry(0.35, 0.65, 0.03),
         stdMat("#5A3A20"),
       );
-      hDoor.position.set(0, 0.35, -houseD / 2 - 0.01);
+      hDoor.position.set(0, 0.35, frontZ);
       houseGroup.add(hDoor);
-      // Windows (front face) — opaque frames with glass
+      // Front windows
       const winSpacing = houseW * 0.25;
       for (const wx2 of [-winSpacing, winSpacing]) {
-        // Frame
         const wFrame = new THREE.Mesh(
           new THREE.BoxGeometry(0.4, 0.35, 0.04),
           stdMat("#E8E0D0", 0.7),
         );
-        wFrame.position.set(wx2, wallH * 0.55, -houseD / 2 - 0.01);
+        wFrame.position.set(wx2, wallH * 0.55, frontZ);
         houseGroup.add(wFrame);
-        // Glass
         const hWin = new THREE.Mesh(
           new THREE.BoxGeometry(0.3, 0.25, 0.02),
-          new THREE.MeshStandardMaterial({
-            color: "#A8D8EA", roughness: 0.1,
-            emissive: "#88B8D8", emissiveIntensity: 0.15,
-          }),
+          winGlassMat,
         );
-        hWin.position.set(wx2, wallH * 0.55, -houseD / 2 - 0.02);
+        hWin.position.set(wx2, wallH * 0.55, frontZ + frontSign * -0.01);
         houseGroup.add(hWin);
       }
       // Side windows
@@ -635,36 +638,74 @@ export class Game {
         for (let sy = 0; sy < 2; sy++) {
           const sWin = new THREE.Mesh(
             new THREE.BoxGeometry(0.03, 0.3, 0.35),
-            new THREE.MeshStandardMaterial({
-              color: "#A8D8EA", roughness: 0.1,
-              emissive: "#88B8D8", emissiveIntensity: 0.1,
-            }),
+            sideWinMat,
           );
           sWin.position.set(sx, wallH * 0.55, -houseD * 0.15 + sy * houseD * 0.35);
           houseGroup.add(sWin);
         }
       }
-      // Garage door on one house
+      // Garage on some houses
       if (hx > 0) {
         const garage = new THREE.Mesh(
           new THREE.BoxGeometry(0.7, 0.55, 0.03),
           stdMat("#A0907A", 0.8),
         );
-        garage.position.set(-winSpacing * 1.5, 0.3, -houseD / 2 - 0.01);
+        garage.position.set(-winSpacing * 1.5, 0.3, frontZ);
         houseGroup.add(garage);
       }
-      // Small yard fence in front
+      // Yard fence on the front side
       const yardFence = new THREE.Mesh(
-        new THREE.BoxGeometry(houseW * 1.1, 0.3, 0.04),
+        new THREE.BoxGeometry(houseW * 1.2, 0.3, 0.04),
         stdMat(palette.fence, 0.7),
       );
-      yardFence.position.set(0, 0.15, -houseD / 2 - 0.8);
+      yardFence.position.set(0, 0.15, frontZ + frontSign * -0.8);
       houseGroup.add(yardFence);
 
       houseGroup.position.set(hx, 0, hz);
       houseGroup.castShadow = true;
       this.scene.add(houseGroup);
-    });
+    };
+
+    // Same side of the road (left and right of player's house)
+    // Player's fence runs from fenceMinX to fenceMaxX, road is at roadZ (south)
+    // Houses sit between fenceMinZ and fenceMaxZ, offset to the side
+    const playerCenterZ = (fenceMinZ + fenceMaxZ) / 2;
+    const sideHouseDefs: [number, number, string, string][] = [
+      [fenceMinX - houseW * 0.65, playerCenterZ, "#D4C4A8", "#8B4A2A"],
+      [fenceMaxX + houseW * 0.65, playerCenterZ, "#E0D0B8", "#7A5A3A"],
+    ];
+    sideHouseDefs.forEach(([hx, hz, wc, rc]) => buildNeighborHouse(hx, hz, wc, rc, true));
+
+    // Across the road (facing player's house)
+    const acrossZ = roadZ + 3.5 + houseD / 2;
+    const acrossHouseDefs: [number, number, string, string][] = [
+      [fenceMinX - houseW * 0.3, acrossZ, "#C0B8A0", "#6A3A1A"],
+      [fenceMaxX + houseW * 0.3, acrossZ, "#D8C8B0", "#7A4A2A"],
+    ];
+    acrossHouseDefs.forEach(([hx, hz, wc, rc]) => buildNeighborHouse(hx, hz, wc, rc, true));
+
+    // Behind the player's house (back yards share a fence)
+    const behindZ = fenceMinZ - 1.5 - houseD / 2;
+    const behindHouseDefs: [number, number, string, string][] = [
+      [fenceMinX - houseW * 0.3, behindZ, "#C8C0B0", "#6A4A2A"],
+      [0, behindZ, "#D0C4B4", "#7A5A3A"],
+      [fenceMaxX + houseW * 0.3, behindZ, "#DCD0C0", "#8A5A2A"],
+    ];
+    behindHouseDefs.forEach(([hx, hz, wc, rc]) => buildNeighborHouse(hx, hz, wc, rc, false));
+
+    // Shared back fence between player and behind-houses
+    const backFence = new THREE.Mesh(
+      new THREE.BoxGeometry((fenceMaxX - fenceMinX) + houseW * 2, 0.35, 0.06),
+      stdMat(palette.fence, 0.7),
+    );
+    backFence.position.set(0, 0.175, fenceMinZ - 0.8);
+    this.scene.add(backFence);
+    // Fence posts for shared back fence
+    for (let x = fenceMinX - houseW; x <= fenceMaxX + houseW; x += 0.8) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
+      post.position.set(x, 0.2, fenceMinZ - 0.8);
+      this.scene.add(post);
+    }
   }
 
   private buildFloor(
