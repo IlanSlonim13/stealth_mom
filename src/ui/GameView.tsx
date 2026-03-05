@@ -35,6 +35,10 @@ export function GameView() {
   const startLevel     = useGameStore((s) => s.startLevel);
 
   const [bubbleFading, setBubbleFading] = useState(false);
+  const decoyModeRef = useRef(decoyMode);
+  decoyModeRef.current = decoyMode;
+  const throwDecoyRef = useRef(throwDecoyFn);
+  throwDecoyRef.current = throwDecoyFn;
 
   // Relaxation state
   const [consumed, setConsumed] = useState<Set<string>>(new Set());
@@ -68,6 +72,10 @@ export function GameView() {
       game.setIntroCompleteCallback(() => {
         setBubbleFading(true);
         setTimeout(() => setIntroActive(false), 600);
+      });
+      game.setDeferredTapHandler((x, y) => {
+        const result = game.handleTap(x, y, decoyModeRef.current);
+        if (result === "thrown") throwDecoyRef.current();
       });
       game.setRelaxZoomCallback(() => {
         setRelaxActive(true);
@@ -107,14 +115,10 @@ export function GameView() {
   }, [inventory, levelIdx]);
 
   const handleInput = useCallback(
-    (e: React.MouseEvent | React.TouchEvent) => {
+    (e: React.MouseEvent) => {
       const game = gameRef.current;
       if (!game) return;
-      const clientX = "touches" in e ? e.touches[0]?.clientX : e.clientX;
-      const clientY = "touches" in e ? e.touches[0]?.clientY : e.clientY;
-      if (clientX == null || clientY == null) return;
-
-      const result = game.handleTap(clientX, clientY, decoyMode);
+      const result = game.handleTap(e.clientX, e.clientY, decoyMode);
       if (result === "thrown") {
         throwDecoyFn();
       }
@@ -148,7 +152,6 @@ export function GameView() {
       <div
         ref={mountRef}
         onClick={handleInput}
-        onTouchStart={handleInput}
         style={{ width: "100%", height: "100%", touchAction: "none" }}
       />
 
