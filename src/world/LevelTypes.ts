@@ -25,7 +25,10 @@ export type FurnitureShape =
   | "table" | "shelf" | "fridge" | "counter" | "lamp" | "plant"
   | "toybox" | "stool" | "shoeRack" | "couch" | "tv" | "dresser"
   | "bed" | "bathtub" | "bookcase" | "desk" | "tvUnit"
-  | "coffeeTable" | "ottoman" | "laundryBasket" | "toys" | "mirror" | "clock";
+  | "coffeeTable" | "ottoman" | "laundryBasket" | "toys" | "mirror" | "clock"
+  | "pictureFrame" | "flowerVase" | "sink" | "oven" | "microwave"
+  | "nightstand" | "curtains" | "coatRack" | "sideTableGlass"
+  | "kitchenIsland" | "toiletries" | "rugDecor";
 
 export interface FurnitureDef {
   x: number;

@@ -841,6 +841,226 @@ export class Game {
         g.add(mirrorMesh);
         break;
       }
+      case "pictureFrame": {
+        // Wall-mounted picture frame with colorful canvas
+        add(new THREE.BoxGeometry(tw * 0.8, 0.45, 0.04), std("#5A3A20", 0.7), 0.55); // frame
+        const canvas = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.65, 0.35, 0.02),
+          new THREE.MeshStandardMaterial({ color: f.col, roughness: 0.6 }),
+        );
+        canvas.position.set(0, 0.55, -0.02);
+        g.add(canvas);
+        // Small highlight rectangle on the painting
+        const highlight = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.25, 0.12, 0.005), std("#FFFFFF", 0.9));
+        highlight.position.set(-tw * 0.1, 0.58, -0.035);
+        g.add(highlight);
+        break;
+      }
+      case "flowerVase": {
+        // Tall narrow table with vase and flowers
+        // Small pedestal table
+        add(new THREE.CylinderGeometry(0.06, 0.06, 0.35, 6), std("#6A4A2A", 0.7), 0.18); // stem
+        add(new THREE.CylinderGeometry(0.14, 0.14, 0.03, 8), std("#6A4A2A", 0.6), 0.37); // tabletop
+        // Vase
+        add(new THREE.CylinderGeometry(0.04, 0.06, 0.16, 8), std(f.col, 0.4, 0.1), 0.46);
+        // Flowers - three colored spheres on stems
+        const flowerCols = ["#FF6B8A", "#FFD700", "#FF4500"];
+        for (let i = 0; i < 3; i++) {
+          const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.15, 4), std("#2A8A2A", 0.8));
+          stem.position.set(Math.sin(i * 2.1) * 0.03, 0.6, Math.cos(i * 2.1) * 0.03);
+          g.add(stem);
+          const flower = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), std(flowerCols[i], 0.6));
+          flower.position.set(Math.sin(i * 2.1) * 0.04, 0.68 + i * 0.02, Math.cos(i * 2.1) * 0.04);
+          g.add(flower);
+        }
+        break;
+      }
+      case "sink": {
+        // Kitchen/bathroom sink with basin and faucet
+        add(new THREE.BoxGeometry(tw, 0.35, th), std("#8A7A6A", 0.7), 0.18); // cabinet
+        add(new THREE.BoxGeometry(tw + 0.04, 0.04, th + 0.04), std("#D0D0D0", 0.3, 0.15), 0.37); // countertop
+        // Basin (recessed)
+        const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.06, 8),
+          new THREE.MeshStandardMaterial({ color: "#E8E8E8", roughness: 0.2, metalness: 0.1 }));
+        basin.position.set(0, 0.36, 0);
+        g.add(basin);
+        // Faucet
+        const faucet = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.15, 5),
+          std("#C0C0C0", 0.2, 0.5));
+        faucet.position.set(0, 0.46, -th / 2 + 0.08);
+        g.add(faucet);
+        // Faucet spout (horizontal)
+        const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.08, 5),
+          std("#C0C0C0", 0.2, 0.5));
+        spout.rotation.x = Math.PI / 2;
+        spout.position.set(0, 0.52, -th / 2 + 0.14);
+        g.add(spout);
+        break;
+      }
+      case "oven": {
+        // Kitchen stove/oven with burners
+        add(new THREE.BoxGeometry(tw, 0.4, th), std("#333333", 0.5, 0.15), 0.2); // body
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std("#444444", 0.4, 0.2), 0.42); // cooktop
+        // Burners (4 rings)
+        const burnerMat = std("#222222", 0.3, 0.3);
+        [[-0.1, -0.08], [0.1, -0.08], [-0.1, 0.08], [0.1, 0.08]].forEach(([bx, bz]) => {
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 6, 12), burnerMat);
+          ring.rotation.x = Math.PI / 2;
+          ring.position.set(bx, 0.44, bz);
+          g.add(ring);
+        });
+        // Oven door handle
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.6, 0.015, 0.015), std("#888", 0.3, 0.4));
+        handle.position.set(0, 0.28, th / 2 + 0.01);
+        g.add(handle);
+        // Oven window
+        const ovenWindow = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.5, 0.12, 0.01),
+          new THREE.MeshStandardMaterial({ color: "#1A1A2A", roughness: 0.1, metalness: 0.2 }));
+        ovenWindow.position.set(0, 0.15, th / 2 + 0.005);
+        g.add(ovenWindow);
+        break;
+      }
+      case "microwave": {
+        // Small box on counter height
+        add(new THREE.BoxGeometry(tw * 0.8, 0.2, th * 0.8), std("#888888", 0.4, 0.15), 0.48);
+        // Door
+        const door = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.5, 0.14, 0.01),
+          new THREE.MeshStandardMaterial({ color: "#111122", roughness: 0.1 }));
+        door.position.set(-tw * 0.05, 0.48, th * 0.4 + 0.005);
+        g.add(door);
+        // Handle
+        const mh = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.1, 0.015), std("#AAAAAA", 0.3, 0.4));
+        mh.position.set(tw * 0.25, 0.48, th * 0.4 + 0.01);
+        g.add(mh);
+        // Pedestal (sits on counter)
+        add(new THREE.BoxGeometry(tw * 0.85, 0.02, th * 0.85), std("#777", 0.5), 0.37);
+        break;
+      }
+      case "nightstand": {
+        // Small bedside table with drawer and lamp area
+        add(new THREE.BoxGeometry(tw, 0.3, th), std(f.col, 0.7), 0.15); // body
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std(f.col, 0.6), 0.32); // top
+        // Drawer line
+        add(new THREE.BoxGeometry(tw + 0.005, 0.008, th + 0.005), std("#4A3010", 0.8), 0.15);
+        // Knob
+        const nKnob = new THREE.Mesh(new THREE.SphereGeometry(0.02, 5, 5), std("#C0A040", 0.4, 0.3));
+        nKnob.position.set(0, 0.15, -(th / 2) - 0.015);
+        g.add(nKnob);
+        break;
+      }
+      case "curtains": {
+        // Wall-mounted curtain rod with drapes
+        // Rod
+        add(new THREE.CylinderGeometry(0.012, 0.012, tw * 1.1, 6), std("#8A7040", 0.4, 0.3), 0.7).rotation.z = Math.PI / 2;
+        // Rod finials
+        [-tw * 0.55, tw * 0.55].forEach((fx) => {
+          const fin = new THREE.Mesh(new THREE.SphereGeometry(0.02, 5, 5), std("#8A7040", 0.4, 0.3));
+          fin.position.set(fx, 0.7, 0);
+          g.add(fin);
+        });
+        // Left drape
+        const drapeMat = std(f.col, 0.85);
+        const leftDrape = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.3, 0.55, 0.04), drapeMat);
+        leftDrape.position.set(-tw * 0.32, 0.4, 0);
+        g.add(leftDrape);
+        // Right drape
+        const rightDrape = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.3, 0.55, 0.04), drapeMat);
+        rightDrape.position.set(tw * 0.32, 0.4, 0);
+        g.add(rightDrape);
+        break;
+      }
+      case "coatRack": {
+        // Standing coat rack with hooks
+        add(new THREE.CylinderGeometry(0.1, 0.12, 0.03, 8), std("#5A3A20", 0.7), 0.015); // base
+        add(new THREE.CylinderGeometry(0.02, 0.02, 0.65, 6), std("#5A3A20", 0.7), 0.35); // pole
+        // Top cap
+        add(new THREE.SphereGeometry(0.03, 6, 6), std("#5A3A20", 0.7), 0.68);
+        // Hooks
+        for (let i = 0; i < 4; i++) {
+          const hook = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.08, 4), std("#8A7040", 0.4, 0.3));
+          hook.rotation.z = Math.PI / 3;
+          hook.position.set(Math.sin(i * Math.PI / 2) * 0.06, 0.6, Math.cos(i * Math.PI / 2) * 0.06);
+          g.add(hook);
+        }
+        // A jacket hanging
+        const jacket = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 0.06), std("#2A3A5A", 0.8));
+        jacket.position.set(0.06, 0.48, 0);
+        g.add(jacket);
+        break;
+      }
+      case "sideTableGlass": {
+        // Side table with a glass of wine/water on top
+        const col = f.col;
+        add(new THREE.BoxGeometry(tw * 0.9, 0.04, th * 0.9), std(col, 0.6), 0.32); // tabletop
+        leg(-tw / 2 + 0.06, -th / 2 + 0.06, 0.3, col);
+        leg( tw / 2 - 0.06, -th / 2 + 0.06, 0.3, col);
+        leg(-tw / 2 + 0.06,  th / 2 - 0.06, 0.3, col);
+        leg( tw / 2 - 0.06,  th / 2 - 0.06, 0.3, col);
+        // Glass
+        const glass = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.025, 0.02, 0.08, 8, 1, true),
+          new THREE.MeshStandardMaterial({ color: "#D0E8F0", roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.6 }),
+        );
+        glass.position.set(0.04, 0.38, -0.02);
+        g.add(glass);
+        // Liquid inside
+        const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.018, 0.05, 8), std("#8B1A2A", 0.5));
+        liquid.position.set(0.04, 0.37, -0.02);
+        g.add(liquid);
+        // Coaster
+        const coaster = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.008, 8), std("#5A3A1A", 0.8));
+        coaster.position.set(0.04, 0.34, -0.02);
+        g.add(coaster);
+        break;
+      }
+      case "kitchenIsland": {
+        // Kitchen island: wider counter with overhead detail
+        add(new THREE.BoxGeometry(tw, 0.38, th), std("#7A6A5A", 0.7), 0.19); // base
+        add(new THREE.BoxGeometry(tw + 0.06, 0.05, th + 0.06), std("#E8DDD0", 0.35), 0.41); // countertop
+        // Cutting board
+        const board = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.12), std("#C8A870", 0.8));
+        board.position.set(-0.05, 0.44, 0); board.rotation.y = 0.2;
+        g.add(board);
+        // Bowl
+        const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
+          std("#E0E0E0", 0.3, 0.1));
+        bowl.rotation.x = Math.PI;
+        bowl.position.set(0.1, 0.47, 0.02);
+        g.add(bowl);
+        break;
+      }
+      case "toiletries": {
+        // Small shelf / tray with bathroom items
+        add(new THREE.BoxGeometry(tw * 0.8, 0.03, th * 0.6), std("#E8E0D8", 0.6), 0.4); // tray
+        // Bottle 1 (tall)
+        add(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 6), std("#3A8ABB", 0.4), 0.48).position.x = -0.06;
+        // Bottle 2 (short round)
+        add(new THREE.CylinderGeometry(0.025, 0.025, 0.07, 6), std("#BB6A8A", 0.4), 0.45).position.x = 0.03;
+        // Soap bar
+        const soap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.04), std("#F0E0C0", 0.7));
+        soap.position.set(0.08, 0.42, 0.04);
+        g.add(soap);
+        break;
+      }
+      case "rugDecor": {
+        // Small decorative floor rug (flat)
+        const rugMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(tw, 0.015, th),
+          new THREE.MeshStandardMaterial({ color: f.col, roughness: 0.9 }),
+        );
+        rugMesh.position.y = 0.008;
+        rugMesh.receiveShadow = true;
+        g.add(rugMesh);
+        // Border stripe
+        const border = new THREE.Mesh(
+          new THREE.BoxGeometry(tw + 0.02, 0.012, th + 0.02),
+          std("#8A7060", 0.9),
+        );
+        border.position.y = 0.005;
+        border.receiveShadow = true;
+        g.add(border);
+        break;
+      }
       case "clock": {
         // Back plate / circle face
         const face = new THREE.Mesh(
