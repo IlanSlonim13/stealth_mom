@@ -28,7 +28,8 @@ export type FurnitureShape =
   | "coffeeTable" | "ottoman" | "laundryBasket" | "toys" | "mirror" | "clock"
   | "pictureFrame" | "flowerVase" | "sink" | "oven" | "microwave"
   | "nightstand" | "curtains" | "coatRack" | "sideTableGlass"
-  | "kitchenIsland" | "toiletries" | "rugDecor";
+  | "kitchenIsland" | "toiletries" | "rugDecor"
+  | "window" | "door";
 
 export interface FurnitureDef {
   x: number;
