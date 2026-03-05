@@ -130,6 +130,10 @@ export class Game {
   private pinchStartFrust = 0;
   private frustMin = 1;
   private frustMax = 20;
+  private panOffset = new THREE.Vector3(0, 0, 0);
+  private panStartMidX = 0;
+  private panStartMidY = 0;
+  private panStartOffset = new THREE.Vector3(0, 0, 0);
 
   private level: LevelData;
   private callbacks: GameCallbacks;
@@ -1835,6 +1839,9 @@ export class Game {
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       this.pinchStartDist = Math.hypot(dx, dy);
       this.pinchStartFrust = this.frust;
+      this.panStartMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      this.panStartMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      this.panStartOffset.copy(this.panOffset);
     }
   };
 
@@ -1845,13 +1852,39 @@ export class Game {
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const dist = Math.hypot(dx, dy);
       if (this.pinchStartDist > 0) {
+        // Pinch zoom
         const scale = this.pinchStartDist / dist;
         this.frust = Math.max(this.frustMin, Math.min(this.frustMax, this.pinchStartFrust * scale));
         this.introFrustEnd = this.frust;
         this.updateFrustum();
       }
+      // Pan: convert screen-space delta to isometric world-space
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const screenDx = midX - this.panStartMidX;
+      const screenDy = midY - this.panStartMidY;
+      // Convert pixels to world units: frustum covers half the screen height
+      const el = this.element;
+      const pixelsPerUnit = el.clientHeight / (2 * this.frust);
+      const worldDx = -screenDx / pixelsPerUnit;
+      const worldDy = -screenDy / pixelsPerUnit;
+      // Isometric camera right direction: (1, 0, -1) / sqrt(2)
+      // Isometric camera up direction: (-1, 2, -1) / sqrt(6), but projected on XZ: (-1, 0, -1) / sqrt(2)
+      const INV_SQRT2 = 1 / Math.SQRT2;
+      this.panOffset.x = this.panStartOffset.x + (worldDx * INV_SQRT2 + worldDy * -INV_SQRT2);
+      this.panOffset.z = this.panStartOffset.z + (worldDx * -INV_SQRT2 + worldDy * -INV_SQRT2);
+      this.applyCameraOffset();
     }
   };
+
+  private applyCameraOffset() {
+    const ox = this.panOffset.x;
+    const oz = this.panOffset.z;
+    this.camera.position.set(15 + ox, 15, 15 + oz);
+    this.camTarget.set(ox, 0, oz);
+    this.camera.lookAt(this.camTarget);
+    this.camera.updateProjectionMatrix();
+  }
 
   private updateFrustum() {
     const el = this.element;
