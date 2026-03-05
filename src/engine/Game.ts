@@ -134,6 +134,10 @@ export class Game {
   private panStartMidX = 0;
   private panStartMidY = 0;
   private panStartOffset = new THREE.Vector3(0, 0, 0);
+  private pendingTapTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingTapCoords: { x: number; y: number } | null = null;
+  private wasMultiTouch = false;
+  private onDeferredTap: ((x: number, y: number) => void) | null = null;
 
   private level: LevelData;
   private callbacks: GameCallbacks;
@@ -241,6 +245,7 @@ export class Game {
     const canvas = this.renderer.domElement;
     canvas.addEventListener("touchstart", this.onTouchStart, { passive: false });
     canvas.addEventListener("touchmove", this.onTouchMove, { passive: false });
+    canvas.addEventListener("touchend", this.onTouchEnd, { passive: false });
     this.animate();
   }
 
@@ -1744,6 +1749,10 @@ export class Game {
     this.relaxZoomCallback = cb;
   }
 
+  setDeferredTapHandler(cb: (x: number, y: number) => void) {
+    this.onDeferredTap = cb;
+  }
+
   handleTap(clientX: number, clientY: number, decoyMode: false | "throw"): false | "thrown" {
     if (this.caught || this.won || this.introPhase) return false;
 
@@ -1826,6 +1835,8 @@ export class Game {
     const canvas = this.renderer.domElement;
     canvas.removeEventListener("touchstart", this.onTouchStart);
     canvas.removeEventListener("touchmove", this.onTouchMove);
+    canvas.removeEventListener("touchend", this.onTouchEnd);
+    if (this.pendingTapTimer) clearTimeout(this.pendingTapTimer);
     if (this.decoyMesh) { this.scene.remove(this.decoyMesh); this.decoyMesh = null; }
     AudioManager.stopAmbient();
     this.renderer.dispose();
@@ -1833,8 +1844,17 @@ export class Game {
   }
 
   private onTouchStart = (e: TouchEvent) => {
+    if (e.touches.length === 1) {
+      // Store coords but don't tap yet — wait to see if a second finger arrives
+      this.pendingTapCoords = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      this.wasMultiTouch = false;
+    }
     if (e.touches.length === 2) {
       e.preventDefault();
+      // Cancel any pending single-finger tap
+      if (this.pendingTapTimer) { clearTimeout(this.pendingTapTimer); this.pendingTapTimer = null; }
+      this.pendingTapCoords = null;
+      this.wasMultiTouch = true;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       this.pinchStartDist = Math.hypot(dx, dy);
@@ -1842,6 +1862,20 @@ export class Game {
       this.panStartMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       this.panStartMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       this.panStartOffset.copy(this.panOffset);
+    }
+  };
+
+  private onTouchEnd = (e: TouchEvent) => {
+    // When all fingers are lifted after a single-finger tap (no multi-touch), fire the tap
+    if (e.touches.length === 0 && this.pendingTapCoords && !this.wasMultiTouch) {
+      e.preventDefault(); // prevent synthetic click event on touch devices
+      const coords = this.pendingTapCoords;
+      this.pendingTapCoords = null;
+      this.onDeferredTap?.(coords.x, coords.y);
+    }
+    if (e.touches.length === 0) {
+      this.wasMultiTouch = false;
+      this.pendingTapCoords = null;
     }
   };
 
