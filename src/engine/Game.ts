@@ -663,6 +663,14 @@ export class Game {
     const interiorWallSet = new Set<string>();
     (lvl.interiorWalls ?? []).forEach(([x, z]) => interiorWallSet.add(`${x},${z}`));
 
+    // Interior wall materials — same look as perimeter but transparent
+    const interiorWallMat = new THREE.MeshStandardMaterial({
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.45, depthWrite: false,
+    });
+    const interiorBaseMat = new THREE.MeshStandardMaterial({
+      color: baseColor, roughness: 0.9, transparent: true, opacity: 0.5, depthWrite: false,
+    });
+
     // Track which interior wall tiles already got a centered panel so we don't double-render
     const interiorRendered = new Set<string>();
 
@@ -671,77 +679,54 @@ export class Game {
       const wx3 = (wx - this.cx) * TS;
       const wz3 = (wz - this.cz) * TS;
 
-      // Interior walls: render a single centered panel instead of two offset panels
+      // Interior walls: render a single centered panel (like perimeter walls but transparent)
       if (interiorWallSet.has(wallKey) && !interiorRendered.has(wallKey)) {
         interiorRendered.add(wallKey);
 
         // Determine wall orientation: check which axis has non-wall neighbors on both sides
         const openEW = !this.allWallSet.has(`${wx - 1},${wz}`) && !this.allWallSet.has(`${wx + 1},${wz}`);
-        const openNS = !this.allWallSet.has(`${wx},${wz - 1}`) && !this.allWallSet.has(`${wx},${wz + 1}`);
 
-        // rotY: 0 means panel faces north/south (wall runs east-west); PI/2 means faces east/west (wall runs north-south)
-        const rotY = openEW ? 0 : Math.PI / 2;
+        // If open east-west, wall separates E/W → panel faces east/west → rotY = PI/2
+        // If open north-south, wall separates N/S → panel faces north/south → rotY = 0
+        const rotY = openEW ? Math.PI / 2 : 0;
 
-        // Does this wall hide tiles from camera?
-        const hidesAnyTile = [
-          [wx, wz - 1],
-          [wx - 1, wz],
-        ].some(([nx, nz]) =>
-          nx >= 0 && nx < W && nz >= 0 && nz < H && !this.allWallSet.has(`${nx},${nz}`)
+        // Wall panel — same height as perimeter walls
+        const panel = new THREE.Mesh(
+          new THREE.BoxGeometry(0.92 * TS, 1.5, 0.06),
+          interiorWallMat,
         );
+        panel.position.set(wx3, TILE_H + 0.75, wz3);
+        panel.rotation.y = rotY;
+        panel.renderOrder = 1;
+        this.scene.add(panel);
 
-        if (hidesAnyTile) {
-          const panelBottom = new THREE.Mesh(
-            new THREE.BoxGeometry(0.92 * TS, bottomH, 0.06),
-            wallMatBottom,
+        // Baseboard on both sides
+        for (const side of [-1, 1]) {
+          const base = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, 0.06, 0.07),
+            interiorBaseMat,
           );
-          panelBottom.position.set(wx3, TILE_H + bottomH / 2, wz3);
-          panelBottom.rotation.y = rotY;
-          panelBottom.renderOrder = 1;
-          this.scene.add(panelBottom);
-
-          const panelTop = new THREE.Mesh(
-            new THREE.BoxGeometry(0.92 * TS, topH, 0.06),
-            wallMatTop,
-          );
-          panelTop.position.set(wx3, TILE_H + bottomH + topH / 2, wz3);
-          panelTop.rotation.y = rotY;
-          panelTop.renderOrder = 1;
-          this.scene.add(panelTop);
-        } else {
-          const panel = new THREE.Mesh(
-            new THREE.BoxGeometry(0.92 * TS, 1.5, 0.06),
-            wallMatOpaque,
-          );
-          panel.position.set(wx3, TILE_H + 0.75, wz3);
-          panel.rotation.y = rotY;
-          this.scene.add(panel);
-
-          // Baseboard on both sides
-          for (const side of [-1, 1]) {
-            const bOff = side * 0.035;
-            const base = new THREE.Mesh(
-              new THREE.BoxGeometry(0.92 * TS, 0.06, 0.07),
-              baseMat,
-            );
-            if (rotY === 0) {
-              base.position.set(wx3, TILE_H + 0.03, wz3 + bOff);
-            } else {
-              base.position.set(wx3 + bOff, TILE_H + 0.03, wz3);
-            }
-            base.rotation.y = rotY;
-            this.scene.add(base);
+          const bOff = side * 0.035;
+          if (openEW) {
+            base.position.set(wx3 + bOff, TILE_H + 0.03, wz3);
+          } else {
+            base.position.set(wx3, TILE_H + 0.03, wz3 + bOff);
           }
-
-          // Crown molding
-          const crown = new THREE.Mesh(
-            new THREE.BoxGeometry(0.94 * TS, 0.04, 0.08),
-            baseMat,
-          );
-          crown.position.set(wx3, TILE_H + 1.48, wz3);
-          crown.rotation.y = rotY;
-          this.scene.add(crown);
+          base.rotation.y = rotY;
+          base.renderOrder = 1;
+          this.scene.add(base);
         }
+
+        // Crown molding
+        const crown = new THREE.Mesh(
+          new THREE.BoxGeometry(0.94 * TS, 0.04, 0.08),
+          interiorBaseMat,
+        );
+        crown.position.set(wx3, TILE_H + 1.48, wz3);
+        crown.rotation.y = rotY;
+        crown.renderOrder = 1;
+        this.scene.add(crown);
+
         continue;
       }
 
