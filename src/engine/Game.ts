@@ -302,7 +302,7 @@ export class Game {
     addRail(fenceMinX, 0, 0.06, fenceMaxZ - fenceMinZ);
     addRail(fenceMaxX, 0, 0.06, fenceMaxZ - fenceMinZ);
 
-    // Bushes
+    // Bushes along fence
     const bushColors = ["#3A7A2A", "#4A8A30", "#2A6A1A", "#5A9A38", "#3E8A28", "#4E8430"];
     const bushPositions: [number, number, number][] = [
       [fenceMinX + 1, 0, fenceMinZ + 1],
@@ -321,10 +321,287 @@ export class Game {
       bush.position.set(bx, r, bz);
       bush.castShadow = true;
       this.scene.add(bush);
-      // Second sphere cluster
       const b2 = bush.clone();
       b2.position.set(bx + r * 0.9, r * 0.8, bz + r * 0.7);
       this.scene.add(b2);
+    });
+
+    // ── Suburban environment ──
+
+    const stdMat = (col: string, rough = 0.7) =>
+      new THREE.MeshStandardMaterial({ color: col, roughness: rough });
+
+    // Driveway (concrete strip from house south side to beyond fence)
+    const dwX = fenceMaxX - 1.5;
+    const dwZ1 = 0;
+    const dwZ2 = fenceMaxZ + 3;
+    const driveway = new THREE.Mesh(
+      new THREE.BoxGeometry(1.8, 0.02, dwZ2 - dwZ1),
+      stdMat("#B0A898", 0.9),
+    );
+    driveway.position.set(dwX, 0.005, (dwZ1 + dwZ2) / 2);
+    driveway.receiveShadow = true;
+    this.scene.add(driveway);
+
+    // Road (asphalt strip past the fence on the south/+z side)
+    const roadZ = fenceMaxZ + 4.5;
+    const roadW = (fenceMaxX - fenceMinX) + 12;
+    const road = new THREE.Mesh(
+      new THREE.BoxGeometry(roadW, 0.02, 3.0),
+      stdMat("#3A3A3A", 0.95),
+    );
+    road.position.set(0, 0.003, roadZ);
+    road.receiveShadow = true;
+    this.scene.add(road);
+
+    // Yellow center line
+    const lineLen = roadW * 0.9;
+    for (let i = 0; i < 8; i++) {
+      const dash = new THREE.Mesh(
+        new THREE.BoxGeometry(lineLen / 12, 0.015, 0.06),
+        stdMat("#E8C840"),
+      );
+      dash.position.set(-lineLen / 2 + (i + 0.5) * lineLen / 8, 0.025, roadZ);
+      this.scene.add(dash);
+    }
+
+    // Sidewalks (on both sides of road)
+    for (const sideOff of [-2.0, 2.0]) {
+      const sidewalk = new THREE.Mesh(
+        new THREE.BoxGeometry(roadW + 2, 0.02, 0.8),
+        stdMat("#C8C0B4", 0.85),
+      );
+      sidewalk.position.set(0, 0.006, roadZ + sideOff);
+      sidewalk.receiveShadow = true;
+      this.scene.add(sidewalk);
+    }
+
+    // Flower beds along house perimeter (south side)
+    const flowerColors = ["#FF6B8A", "#FFD700", "#FF4500", "#DA70D6", "#FF69B4", "#FFA500"];
+    for (let i = 0; i < 10; i++) {
+      const fx = fenceMinX + 1.5 + i * ((fenceMaxX - fenceMinX - 3) / 10);
+      const fz = fenceMaxZ - 0.7;
+      const flower = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 6, 6),
+        stdMat(flowerColors[i % flowerColors.length]),
+      );
+      flower.position.set(fx, 0.08, fz);
+      flower.castShadow = true;
+      this.scene.add(flower);
+      // Stem
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.01, 0.01, 0.08, 4),
+        stdMat("#2A7A1A"),
+      );
+      stem.position.set(fx, 0.04, fz);
+      this.scene.add(stem);
+    }
+
+    // Trees in the yard
+    const treePositions: [number, number][] = [
+      [fenceMinX + 1.5, fenceMinZ + 2],
+      [fenceMaxX - 1.5, fenceMinZ + 2],
+      [fenceMinX + 2, fenceMaxZ - 2],
+    ];
+    treePositions.forEach(([tx, tz]) => {
+      // Trunk
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.1, 1.0, 6),
+        stdMat("#6B4226", 0.85),
+      );
+      trunk.position.set(tx, 0.5, tz);
+      trunk.castShadow = true;
+      this.scene.add(trunk);
+      // Canopy (layered spheres)
+      const canopyColors = ["#2A7A1A", "#3A8A28", "#2E6E1E"];
+      for (let c = 0; c < 3; c++) {
+        const canopy = new THREE.Mesh(
+          new THREE.SphereGeometry(0.4 - c * 0.08, 8, 8),
+          stdMat(canopyColors[c], 0.9),
+        );
+        canopy.position.set(
+          tx + (c - 1) * 0.15,
+          1.0 + c * 0.15,
+          tz + (c % 2) * 0.1,
+        );
+        canopy.castShadow = true;
+        this.scene.add(canopy);
+      }
+    });
+
+    // Mailbox near the fence/road
+    const mbX = fenceMaxX + 0.5;
+    const mbZ = fenceMaxZ + 2.2;
+    // Post
+    const mailPost = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.03, 0.6, 5),
+      stdMat("#5A3A20"),
+    );
+    mailPost.position.set(mbX, 0.3, mbZ);
+    this.scene.add(mailPost);
+    // Box
+    const mailBox = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.12, 0.15),
+      stdMat("#2244AA"),
+    );
+    mailBox.position.set(mbX, 0.65, mbZ);
+    mailBox.castShadow = true;
+    this.scene.add(mailBox);
+    // Flag
+    const mailFlag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.02, 0.08, 0.06),
+      stdMat("#CC2222"),
+    );
+    mailFlag.position.set(mbX + 0.12, 0.68, mbZ);
+    this.scene.add(mailFlag);
+
+    // ── People walking on sidewalk ──
+    const personPositions: [number, number, string][] = [
+      [fenceMinX - 1, roadZ - 2.0, "#3A5A8A"],
+      [fenceMinX + 3, roadZ + 2.0, "#8A3A5A"],
+      [fenceMaxX + 1, roadZ - 2.0, "#5A8A3A"],
+    ];
+    personPositions.forEach(([px, pz, col]) => {
+      const personGroup = new THREE.Group();
+      // Body
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.06, 0.35, 6),
+        stdMat(col),
+      );
+      body.position.y = 0.3;
+      personGroup.add(body);
+      // Head
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 7, 7),
+        stdMat("#E8C8A8"),
+      );
+      head.position.y = 0.55;
+      personGroup.add(head);
+      // Legs
+      for (const lx of [-0.04, 0.04]) {
+        const legMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.025, 0.025, 0.2, 5),
+          stdMat("#2A2A3A"),
+        );
+        legMesh.position.set(lx, 0.1, 0);
+        personGroup.add(legMesh);
+      }
+      personGroup.position.set(px, 0, pz);
+      personGroup.castShadow = true;
+      this.scene.add(personGroup);
+    });
+
+    // ── Cars ──
+    const carPositions: [number, number, number, string, string][] = [
+      // Car on driveway
+      [dwX, 0, fenceMaxZ + 1, "#4A6A8A", "#C0D0E0"],
+      // Car on road
+      [fenceMinX - 2, 0, roadZ - 0.3, "#8A2A2A", "#B8C8D8"],
+      // Parked car across street
+      [fenceMaxX + 3, 0, roadZ + 0.3, "#2A5A2A", "#C0D0D0"],
+    ];
+    carPositions.forEach(([cx, , cz, bodyCol, windowCol]) => {
+      const carGroup = new THREE.Group();
+      // Body
+      const carBody = new THREE.Mesh(
+        new THREE.BoxGeometry(0.8, 0.25, 0.45),
+        stdMat(bodyCol, 0.5),
+      );
+      carBody.position.y = 0.18;
+      carGroup.add(carBody);
+      // Roof / cabin
+      const cabin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.45, 0.2, 0.4),
+        stdMat(bodyCol, 0.5),
+      );
+      cabin.position.set(-0.05, 0.37, 0);
+      carGroup.add(cabin);
+      // Windows
+      const winMat = new THREE.MeshStandardMaterial({
+        color: windowCol, roughness: 0.1, metalness: 0.2,
+        transparent: true, opacity: 0.6,
+      });
+      // Side windows
+      for (const wz of [-0.21, 0.21]) {
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 0.01), winMat);
+        win.position.set(-0.05, 0.39, wz);
+        carGroup.add(win);
+      }
+      // Wheels
+      const wheelMat = stdMat("#1A1A1A", 0.8);
+      const wheelGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 8);
+      for (const [wx2, wz2] of [[-0.25, -0.22], [-0.25, 0.22], [0.25, -0.22], [0.25, 0.22]]) {
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+        wheel.rotation.x = Math.PI / 2;
+        wheel.position.set(wx2, 0.08, wz2);
+        carGroup.add(wheel);
+      }
+      // Headlights
+      const hlMat = new THREE.MeshStandardMaterial({
+        color: "#FFFFCC", emissive: "#FFFFAA", emissiveIntensity: 0.3,
+      });
+      for (const hz of [-0.15, 0.15]) {
+        const hl = new THREE.Mesh(new THREE.SphereGeometry(0.035, 5, 5), hlMat);
+        hl.position.set(0.41, 0.18, hz);
+        carGroup.add(hl);
+      }
+      carGroup.position.set(cx, 0, cz);
+      carGroup.castShadow = true;
+      this.scene.add(carGroup);
+    });
+
+    // ── Neighbor houses (distant, simple shapes across the road) ──
+    const housePositions: [number, number, string, string][] = [
+      [fenceMinX - 1, roadZ + 5.5, "#D4C4A8", "#8B4A2A"],
+      [0, roadZ + 6.0, "#C0B8A0", "#6A3A1A"],
+      [fenceMaxX + 1, roadZ + 5.5, "#E0D0B8", "#7A5A3A"],
+    ];
+    housePositions.forEach(([hx, hz, wallCol, roofCol]) => {
+      const houseGroup = new THREE.Group();
+      // House body
+      const hBody = new THREE.Mesh(
+        new THREE.BoxGeometry(2.5, 1.0, 1.5),
+        stdMat(wallCol, 0.85),
+      );
+      hBody.position.y = 0.5;
+      houseGroup.add(hBody);
+      // Roof (triangular prism approximated with a rotated box)
+      const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(2.7, 0.15, 1.8),
+        stdMat(roofCol, 0.8),
+      );
+      roof.position.y = 1.08;
+      roof.rotation.x = 0;
+      houseGroup.add(roof);
+      // Roof peak
+      const peak = new THREE.Mesh(
+        new THREE.BoxGeometry(2.7, 0.15, 1.2),
+        stdMat(roofCol, 0.8),
+      );
+      peak.position.y = 1.22;
+      houseGroup.add(peak);
+      // Door
+      const hDoor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.5, 0.02),
+        stdMat("#5A3A20"),
+      );
+      hDoor.position.set(0, 0.3, -0.76);
+      houseGroup.add(hDoor);
+      // Windows
+      for (const wx2 of [-0.6, 0.6]) {
+        const hWin = new THREE.Mesh(
+          new THREE.BoxGeometry(0.25, 0.25, 0.02),
+          new THREE.MeshStandardMaterial({
+            color: "#A8D8EA", roughness: 0.1, transparent: true, opacity: 0.5,
+            emissive: "#88B8D8", emissiveIntensity: 0.1,
+          }),
+        );
+        hWin.position.set(wx2, 0.55, -0.76);
+        houseGroup.add(hWin);
+      }
+      houseGroup.position.set(hx, 0, hz);
+      houseGroup.castShadow = true;
+      this.scene.add(houseGroup);
     });
   }
 
@@ -382,12 +659,95 @@ export class Game {
     const bottomH = 0.5;
     const topH = 1.0;
 
+    // Build set of interior wall positions for single-panel rendering
+    const interiorWallSet = new Set<string>();
+    (lvl.interiorWalls ?? []).forEach(([x, z]) => interiorWallSet.add(`${x},${z}`));
+
+    // Track which interior wall tiles already got a centered panel so we don't double-render
+    const interiorRendered = new Set<string>();
+
     for (const wallKey of this.allWallSet) {
       const [wx, wz] = wallKey.split(",").map(Number);
+      const wx3 = (wx - this.cx) * TS;
+      const wz3 = (wz - this.cz) * TS;
+
+      // Interior walls: render a single centered panel instead of two offset panels
+      if (interiorWallSet.has(wallKey) && !interiorRendered.has(wallKey)) {
+        interiorRendered.add(wallKey);
+
+        // Determine wall orientation: check which axis has non-wall neighbors on both sides
+        const openEW = !this.allWallSet.has(`${wx - 1},${wz}`) && !this.allWallSet.has(`${wx + 1},${wz}`);
+        const openNS = !this.allWallSet.has(`${wx},${wz - 1}`) && !this.allWallSet.has(`${wx},${wz + 1}`);
+
+        // rotY: 0 means panel faces north/south (wall runs east-west); PI/2 means faces east/west (wall runs north-south)
+        const rotY = openEW ? 0 : Math.PI / 2;
+
+        // Does this wall hide tiles from camera?
+        const hidesAnyTile = [
+          [wx, wz - 1],
+          [wx - 1, wz],
+        ].some(([nx, nz]) =>
+          nx >= 0 && nx < W && nz >= 0 && nz < H && !this.allWallSet.has(`${nx},${nz}`)
+        );
+
+        if (hidesAnyTile) {
+          const panelBottom = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, bottomH, 0.06),
+            wallMatBottom,
+          );
+          panelBottom.position.set(wx3, TILE_H + bottomH / 2, wz3);
+          panelBottom.rotation.y = rotY;
+          panelBottom.renderOrder = 1;
+          this.scene.add(panelBottom);
+
+          const panelTop = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, topH, 0.06),
+            wallMatTop,
+          );
+          panelTop.position.set(wx3, TILE_H + bottomH + topH / 2, wz3);
+          panelTop.rotation.y = rotY;
+          panelTop.renderOrder = 1;
+          this.scene.add(panelTop);
+        } else {
+          const panel = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, 1.5, 0.06),
+            wallMatOpaque,
+          );
+          panel.position.set(wx3, TILE_H + 0.75, wz3);
+          panel.rotation.y = rotY;
+          this.scene.add(panel);
+
+          // Baseboard on both sides
+          for (const side of [-1, 1]) {
+            const bOff = side * 0.035;
+            const base = new THREE.Mesh(
+              new THREE.BoxGeometry(0.92 * TS, 0.06, 0.07),
+              baseMat,
+            );
+            if (rotY === 0) {
+              base.position.set(wx3, TILE_H + 0.03, wz3 + bOff);
+            } else {
+              base.position.set(wx3 + bOff, TILE_H + 0.03, wz3);
+            }
+            base.rotation.y = rotY;
+            this.scene.add(base);
+          }
+
+          // Crown molding
+          const crown = new THREE.Mesh(
+            new THREE.BoxGeometry(0.94 * TS, 0.04, 0.08),
+            baseMat,
+          );
+          crown.position.set(wx3, TILE_H + 1.48, wz3);
+          crown.rotation.y = rotY;
+          this.scene.add(crown);
+        }
+        continue;
+      }
+
+      // --- Perimeter walls: render face panels toward non-wall neighbors ---
 
       // Does this wall hide tiles from camera? Camera is at (+X, +Y, +Z).
-      // Tiles at lower (x + z) are further from camera → hidden behind this wall.
-      // Check north (wz-1) and west (wx-1) neighbors for non-wall tiles.
       const hidesAnyTile = [
         [wx, wz - 1],
         [wx - 1, wz],
@@ -406,9 +766,6 @@ export class Game {
       for (const [nx, nz, ox, oz, rotY] of faces) {
         if (nx < 0 || nx >= W || nz < 0 || nz >= H) continue;
         if (this.allWallSet.has(`${nx},${nz}`)) continue;
-
-        const wx3 = (wx - this.cx) * TS;
-        const wz3 = (wz - this.cz) * TS;
 
         if (hidesAnyTile) {
           // Split into two segments: semi-opaque bottom + transparent top
@@ -650,7 +1007,7 @@ export class Game {
         const fab = std(f.col, 0.75);
         const fabDark = std(f.col + "AA", 0.8);
         add(new THREE.BoxGeometry(tw, 0.16, th), fab, 0.25); // seat
-        add(new THREE.BoxGeometry(tw, 0.3, 0.14), fabDark, 0.44).position.z = -th / 2 + 0.07; // back
+        add(new THREE.BoxGeometry(tw, 0.3, 0.14), fabDark, 0.44).position.z = th / 2 - 0.07; // back (south side, sitter faces north)
         // Arms
         add(new THREE.BoxGeometry(0.14, 0.22, th), fabDark, 0.36).position.x = -tw / 2 + 0.07;
         add(new THREE.BoxGeometry(0.14, 0.22, th), fabDark, 0.36).position.x =  tw / 2 - 0.07;
@@ -1088,6 +1445,72 @@ export class Game {
         mHand.position.set(0, 0.62, -0.03);
         mHand.rotation.z = -0.4;
         g.add(mHand);
+        break;
+      }
+      case "window": {
+        // Window frame with glass pane and horizontal blinds
+        const frameMat = std("#E8E0D0", 0.7);
+        // Outer frame
+        add(new THREE.BoxGeometry(tw * 0.95, 0.6, 0.05), frameMat, 0.55);
+        // Glass pane (slightly emissive sky blue)
+        const glass = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.8, 0.48, 0.02),
+          new THREE.MeshStandardMaterial({
+            color: "#A8D8EA", roughness: 0.1, metalness: 0.1,
+            transparent: true, opacity: 0.5,
+            emissive: "#88B8D8", emissiveIntensity: 0.15,
+          }),
+        );
+        glass.position.set(0, 0.55, -0.015);
+        g.add(glass);
+        // Window sill
+        add(new THREE.BoxGeometry(tw * 1.0, 0.03, 0.1), std("#D0C8B8", 0.6), 0.28);
+        // Horizontal blinds (5 slats in front of glass)
+        const blindMat = std("#F0EDE4", 0.8);
+        for (let i = 0; i < 5; i++) {
+          const slat = new THREE.Mesh(
+            new THREE.BoxGeometry(tw * 0.76, 0.015, 0.025), blindMat,
+          );
+          slat.position.set(0, 0.35 + i * 0.1, 0.02);
+          slat.rotation.x = 0.25; // tilted open
+          g.add(slat);
+        }
+        // Top valance / header
+        add(new THREE.BoxGeometry(tw * 0.95, 0.04, 0.06), frameMat, 0.82);
+        break;
+      }
+      case "door": {
+        // Door frame with partially open door
+        const doorFrameMat = std("#E8E0D0", 0.7);
+        // Frame: two vertical posts + top header
+        const postGeo = new THREE.BoxGeometry(0.04, 0.85, 0.08);
+        const leftPost = new THREE.Mesh(postGeo, doorFrameMat);
+        leftPost.position.set(-tw * 0.42, 0.43, 0);
+        g.add(leftPost);
+        const rightPost = new THREE.Mesh(postGeo, doorFrameMat);
+        rightPost.position.set(tw * 0.42, 0.43, 0);
+        g.add(rightPost);
+        // Header
+        add(new THREE.BoxGeometry(tw * 0.9, 0.05, 0.08), doorFrameMat, 0.88);
+        // Door panel (slightly ajar — rotated 25 degrees)
+        const doorPanel = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.78, 0.8, 0.04),
+          std("#8B6F5C", 0.75),
+        );
+        // Pivot from left edge: offset x by half-width, rotate, then shift
+        const doorGroup = new THREE.Group();
+        doorPanel.position.x = tw * 0.39;
+        doorGroup.add(doorPanel);
+        doorGroup.position.set(-tw * 0.39, 0.42, 0);
+        doorGroup.rotation.y = -0.4; // slightly open
+        g.add(doorGroup);
+        // Door knob
+        const knob = new THREE.Mesh(
+          new THREE.SphereGeometry(0.025, 6, 6),
+          std("#C0A040", 0.3, 0.4),
+        );
+        knob.position.set(tw * 0.65, 0.42, -0.03);
+        doorGroup.add(knob);
         break;
       }
       default: {
