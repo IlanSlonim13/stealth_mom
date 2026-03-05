@@ -117,6 +117,8 @@ export class Game {
   private relaxZoomPhase = false;
   private relaxZoomElapsed = 0;
   private relaxZoomCallback: (() => void) | null = null;
+  private camBasePos = new THREE.Vector3(15, 15, 15);
+  private camTarget = new THREE.Vector3(0, 0, 0);
   private summoned = false;
   private decoyMesh: THREE.Group | null = null;
   private pickedUpItems = new Set<string>();
@@ -208,6 +210,14 @@ export class Game {
     this.buildMom(lvl);
     this.buildNpcs(lvl);
     this.buildHidingSpots(lvl);
+
+    // Start camera centered on Mom for intro zoom
+    const momWorldX = (lvl.playerStart.x - this.cx) * TILE_SIZE;
+    const momWorldZ = (lvl.playerStart.z - this.cz) * TILE_SIZE;
+    this.camTarget.set(momWorldX, 0, momWorldZ);
+    this.camera.position.set(15 + momWorldX, 15, 15 + momWorldZ);
+    this.camera.lookAt(this.camTarget);
+    this.camera.updateProjectionMatrix();
 
     AudioManager.preload([
       "footstep-soft", "squeak", "caught-mommy", "caught-dog",
@@ -341,10 +351,10 @@ export class Game {
     const wallMatOpaque = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.85 });
     // Split-panel materials for walls that hide tiles behind them
     const wallMatBottom = new THREE.MeshStandardMaterial({
-      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.35, depthWrite: false,
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.55, depthWrite: false,
     });
     const wallMatTop = new THREE.MeshStandardMaterial({
-      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.1, depthWrite: false,
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.3, depthWrite: false,
     });
     const baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.9 });
 
@@ -1351,6 +1361,14 @@ export class Game {
         const zoomT = Math.min(this.relaxZoomElapsed / INTRO_ZOOM_SECS, 1);
         const eased = easeOutQuad(zoomT);
         this.frust = lerp(this.introFrustEnd, this.introFrustStart, eased);
+        // Pan camera from room center to mom
+        const momWX = this.mom.position.x;
+        const momWZ = this.mom.position.z;
+        const tx = lerp(0, momWX, eased);
+        const tz = lerp(0, momWZ, eased);
+        this.camTarget.set(tx, 0, tz);
+        this.camera.position.set(15 + tx, 15, 15 + tz);
+        this.camera.lookAt(this.camTarget);
         this.updateFrustum();
         if (zoomT >= 1) {
           this.relaxZoomPhase = false;
@@ -1369,6 +1387,14 @@ export class Game {
         const zoomT = Math.min((this.introElapsed - INTRO_HOLD_SECS) / INTRO_ZOOM_SECS, 1);
         const eased = easeOutQuad(zoomT);
         this.frust = lerp(this.introFrustStart, this.introFrustEnd, eased);
+        // Pan camera from mom to room center
+        const momWX = this.mom.position.x;
+        const momWZ = this.mom.position.z;
+        const tx = lerp(momWX, 0, eased);
+        const tz = lerp(momWZ, 0, eased);
+        this.camTarget.set(tx, 0, tz);
+        this.camera.position.set(15 + tx, 15, 15 + tz);
+        this.camera.lookAt(this.camTarget);
         this.updateFrustum();
         if (zoomT >= 1) {
           this.introPhase = false;
