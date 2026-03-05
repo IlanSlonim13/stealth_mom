@@ -1,8 +1,7 @@
 import { create } from "zustand";
 import { LEVELS } from "../world/levels";
-import { INTRO_DURATION_MS } from "../utils/constants";
 
-export type Screen = "menu" | "intro" | "game" | "caught" | "win";
+export type Screen = "menu" | "intro" | "game" | "caught" | "win" | "relax";
 export type DecoyMode = false | "throw";
 
 interface GameState {
@@ -14,6 +13,7 @@ interface GameState {
   decoysLeft: number;
   inventory: string[];       // item names currently held (max 1)
   nearPickup: string | null; // item name Mom is near (for HUD prompt)
+  introActive: boolean;      // true while intro zoom is playing
 
   startLevel: (idx: number) => void;
   setScreen: (screen: Screen) => void;
@@ -24,6 +24,7 @@ interface GameState {
   setNearPickup: (item: string | null) => void;
   pickUpDecoy: (itemName: string) => void;
   throwDecoy: () => void;
+  setIntroActive: (v: boolean) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -35,11 +36,13 @@ export const useGameStore = create<GameState>((set) => ({
   decoysLeft: 0,
   inventory: [],
   nearPickup: null,
+  introActive: false,
 
   startLevel: (idx) => {
     set({
       levelIdx: idx,
-      screen: "intro",
+      screen: "game",
+      introActive: true,
       decoyMode: false,
       decoysLeft: LEVELS[idx].decoys ?? 0,
       inventory: [],
@@ -47,7 +50,6 @@ export const useGameStore = create<GameState>((set) => ({
       caughtLine: "",
       winText: "",
     });
-    setTimeout(() => set({ screen: "game" }), INTRO_DURATION_MS);
   },
 
   setScreen: (screen) => set({ screen }),
@@ -66,4 +68,6 @@ export const useGameStore = create<GameState>((set) => ({
   })),
 
   throwDecoy: () => set({ decoyMode: false, inventory: [] }),
+
+  setIntroActive: (v) => set({ introActive: v }),
 }));

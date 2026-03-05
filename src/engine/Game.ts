@@ -6,7 +6,9 @@ import {
   TODDLER_CONE_RANGE, TODDLER_CONE_ANGLE, TODDLER_SPEED,
   HUSBAND_CONE_RANGE, HUSBAND_CONE_ANGLE, HUSBAND_SPEED,
   CAUGHT_DELAY_MS, WIN_DELAY_MS, LURE_INVESTIGATE_SECS, LURE_SPEED_MULTIPLIER,
+  INTRO_HOLD_SECS, INTRO_ZOOM_SECS,
 } from "../utils/constants";
+import { easeOutQuad, lerp } from "../utils/easing";
 import { dist2d, pointInCone } from "../utils/coordinates";
 import { findPath } from "../pathfinding/Pathfinder";
 import { pickRandom } from "../utils/humor";
@@ -107,6 +109,11 @@ export class Game {
 
   private caught = false;
   private won = false;
+  private introPhase = true;
+  private introElapsed = 0;
+  private introFrustStart = 1;
+  private introFrustEnd = 7;
+  private introCompleteCallback: (() => void) | null = null;
   private summoned = false;
   private decoyMesh: THREE.Group | null = null;
   private pickedUpItems = new Set<string>();
@@ -155,9 +162,11 @@ export class Game {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(palette.bg);
 
-    // Camera
+    // Camera — start zoomed in for intro, animate out later
     const aspect = el.clientWidth / el.clientHeight;
-    this.frust = Math.max(W, H) * TILE_SIZE * 0.65;
+    this.introFrustEnd = Math.max(W, H) * TILE_SIZE * 0.65;
+    this.introFrustStart = this.introFrustEnd * 0.15;
+    this.frust = this.introFrustStart;
     const f = this.frust;
     this.camera = new THREE.OrthographicCamera(
       -f * aspect, f * aspect, f, -f, 0.1, 100
@@ -1331,6 +1340,26 @@ export class Game {
       return;
     }
 
+    // Intro zoom-out phase
+    if (this.introPhase) {
+      this.introElapsed += dt;
+      if (this.introElapsed > INTRO_HOLD_SECS) {
+        const zoomT = Math.min((this.introElapsed - INTRO_HOLD_SECS) / INTRO_ZOOM_SECS, 1);
+        const eased = easeOutQuad(zoomT);
+        this.frust = lerp(this.introFrustStart, this.introFrustEnd, eased);
+        this.updateFrustum();
+        if (zoomT >= 1) {
+          this.introPhase = false;
+          this.introCompleteCallback?.();
+        }
+      }
+      // Goal ring pulse still runs during intro
+      const s = 1 + Math.sin(this.frame * 0.05) * 0.15;
+      this.goalRing.scale.set(s, s, 1);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
     this.updateMom(dt);
     this.checkTraps();
     this.updateNpcs(dt);
@@ -1642,8 +1671,12 @@ export class Game {
     if (item) this.pickedUpItems.add(item.itemName);
   }
 
+  setIntroCompleteCallback(cb: () => void) {
+    this.introCompleteCallback = cb;
+  }
+
   handleTap(clientX: number, clientY: number, decoyMode: false | "throw"): false | "thrown" {
-    if (this.caught || this.won) return false;
+    if (this.caught || this.won || this.introPhase) return false;
 
     const rect = this.element.getBoundingClientRect();
     const mouse = new THREE.Vector2(
@@ -1727,7 +1760,7 @@ export class Game {
     this.element.innerHTML = "";
   }
 
-  private onResize = () => {
+  private updateFrustum() {
     const el = this.element;
     const w = el.clientWidth;
     const h = el.clientHeight;
@@ -1739,6 +1772,14 @@ export class Game {
     this.camera.top = f;
     this.camera.bottom = -f;
     this.camera.updateProjectionMatrix();
+  }
+
+  private onResize = () => {
+    this.updateFrustum();
+    const el = this.element;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    if (w === 0 || h === 0) return;
     this.renderer.setSize(w, h);
   };
 }
