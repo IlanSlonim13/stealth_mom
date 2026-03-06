@@ -1961,66 +1961,66 @@ export class Game {
     const head = addMesh(new THREE.SphereGeometry(0.13, 8, 8), "#F5D0B0", headY);
     this.momHead = head;
 
-    // Eyes (on +Z face so they face movement direction)
+    // Eyes — children of head so they move with head bob
     const eyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
     const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), eyeMat);
-    eyeL.position.set(-0.045, headY + 0.02, 0.11);
-    g.add(eyeL);
+    eyeL.position.set(-0.045, 0.02, 0.11);
+    head.add(eyeL);
     const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), eyeMat);
-    eyeR.position.set(0.045, headY + 0.02, 0.11);
-    g.add(eyeR);
+    eyeR.position.set(0.045, 0.02, 0.11);
+    head.add(eyeR);
 
-    // Hair
+    // Hair — children of head so they move with head bob
     const hairMat = new THREE.MeshToonMaterial({ color: "#4A2820" });
     switch (outfit.hair) {
       case "ponytail": {
         // Hair cap on top
         const cap = new THREE.Mesh(new THREE.SphereGeometry(0.135, 8, 4), hairMat);
         cap.scale.y = 0.45;
-        cap.position.set(0, headY + 0.06, -0.02);
-        g.add(cap);
+        cap.position.set(0, 0.06, -0.02);
+        head.add(cap);
         // Tie point at back of head
         const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), hairMat);
-        bun.position.set(0, headY - 0.02, -0.12);
-        g.add(bun);
+        bun.position.set(0, -0.02, -0.12);
+        head.add(bun);
         // Ponytail hanging down from back of head
         const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.02, 0.3, 5), hairMat);
-        tail.position.set(0, headY - 0.17, -0.14);
+        tail.position.set(0, -0.17, -0.14);
         tail.rotation.x = 0.3;
-        g.add(tail);
+        head.add(tail);
         break;
       }
       case "messyBun": {
         const bun = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 6), hairMat);
-        bun.position.set(0, headY + 0.1, 0);
-        g.add(bun);
+        bun.position.set(0, 0.1, 0);
+        head.add(bun);
         const w1 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), hairMat);
-        w1.position.set(-0.12, headY + 0.04, 0);
-        g.add(w1);
+        w1.position.set(-0.12, 0.04, 0);
+        head.add(w1);
         const w2 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), hairMat);
-        w2.position.set(0.12, headY + 0.04, 0.04);
-        g.add(w2);
+        w2.position.set(0.12, 0.04, 0.04);
+        head.add(w2);
         break;
       }
       case "down": {
         const cap = new THREE.Mesh(new THREE.SphereGeometry(0.135, 8, 4), hairMat);
         cap.scale.y = 0.5;
-        cap.position.set(0, headY + 0.06, -0.02);
-        g.add(cap);
+        cap.position.set(0, 0.06, -0.02);
+        head.add(cap);
         // Back drape (longest)
         const drapeBack = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.03, 0.3, 5), hairMat);
-        drapeBack.position.set(0, headY - 0.12, -0.1);
+        drapeBack.position.set(0, -0.12, -0.1);
         drapeBack.rotation.x = 0.2;
-        g.add(drapeBack);
+        head.add(drapeBack);
         // Side drapes
         const drapeL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.28, 4), hairMat);
-        drapeL.position.set(-0.12, headY - 0.12, -0.04);
+        drapeL.position.set(-0.12, -0.12, -0.04);
         drapeL.rotation.z = 0.2;
-        g.add(drapeL);
+        head.add(drapeL);
         const drapeR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.28, 4), hairMat);
-        drapeR.position.set(0.12, headY - 0.12, -0.04);
+        drapeR.position.set(0.12, -0.12, -0.04);
         drapeR.rotation.z = -0.2;
-        g.add(drapeR);
+        head.add(drapeR);
         break;
       }
     }
