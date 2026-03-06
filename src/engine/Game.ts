@@ -3500,18 +3500,20 @@ export class Game {
         }
         break;
       }
-      // ── Phase 2: Turn toward TV (rotation.y → 0) and sit on couch ──
+      // ── Phase 2: Turn toward TV and squat down onto couch ──
       case 2: {
         const seat = this.relaxSeatPos;
         const from = this.relaxWaypoints[1];
         if (seat && from) {
-          // Slide from gap to seat position (northward onto couch cushion)
+          // Slide from gap northward onto couch seat
           this.mom.position.x = lerp(from.x, seat.x, t);
           this.mom.position.z = lerp(from.z, seat.z, t);
           // Turn to face TV (+Z direction, rotation.y = 0)
           this.mom.rotation.y = lerp(this.relaxStartRotY, 0, Math.min(t * 2, 1));
-          // Lower body onto seat (drop Y)
-          this.mom.position.y = lerp(from.y, from.y - 0.10, t);
+          // Squat arc: dip below standing height in first half,
+          // then rise to seat height in second half — never into the couch
+          const squat = Math.sin(t * Math.PI) * 0.06; // mid-squat dip
+          this.mom.position.y = lerp(from.y, seat.y, t) - squat * (1 - t);
           // Thighs rotate to horizontal (pointing forward, +Z)
           const thighAngle = lerp(0, -Math.PI / 2, t);
           if (this.momLeftLeg) this.momLeftLeg.rotation.x = thighAngle;
@@ -3520,14 +3522,14 @@ export class Game {
           const calfAngle = lerp(0, Math.PI / 2, t);
           if (this.momLeftCalf) this.momLeftCalf.rotation.x = calfAngle;
           if (this.momRightCalf) this.momRightCalf.rotation.x = calfAngle;
+          // Torso stays vertical — no lean
+          this.mom.rotation.x = 0;
         }
         break;
       }
       // ── Phase 3: Head tilts slightly backward (leaning on back cushion) ──
       case 3: {
         if (this.momHead) this.momHead.rotation.x = lerp(0, 0.15, t);
-        // Slight torso lean back
-        this.mom.rotation.x = lerp(0, 0.08, t);
         break;
       }
       // ── Phase 4: Left leg lifts from knee — calf straightens onto coffee table ──
@@ -3572,9 +3574,8 @@ export class Game {
         if (this.momLeftLeg) this.momLeftLeg.rotation.x = 0;
         if (this.momRightLeg) this.momRightLeg.rotation.x = 0;
       } else if (this.relaxPhase === 2) {
-        // Snap to seat position — update logical grid position
+        // Snap to seat position (computed at correct seat-top height)
         if (this.relaxSeatPos) this.mom.position.copy(this.relaxSeatPos);
-        this.mom.position.y = (this.relaxWaypoints[1]?.y ?? TILE_H) - 0.10;
         const couchFurn = this.level.furniture.find(f => f.label === "couch");
         if (couchFurn) {
           this.momPos.x = couchFurn.x + couchFurn.w / 2 - 0.5;
@@ -3769,14 +3770,18 @@ export class Game {
       : this.mom.position.x - 0.3;
     // Center of couch in x (where she'll sit)
     const couchCenterX = couchGroup ? couchGroup.position.x : this.mom.position.x - 1.0;
-    // Seat z: near the front (south) of the couch, scooted slightly back
-    const seatZ = couchGroup ? couchGroup.position.z + TILE_SIZE * 0.3 : gapZ - 0.2;
+    // Seat z: center of the couch (she sits facing TV/south)
+    const seatZ = couchGroup ? couchGroup.position.z : gapZ - 0.3;
+    // Seat Y: Mom's hip bottom (local y=0.30) rests on couch seat top surface
+    // Couch seat top = group.y(0.15) + seat center(0.25) + half-thickness(0.08) = 0.48
+    const seatTopY = (couchGroup?.position.y ?? TILE_H) + 0.33;
+    const seatedMomY = seatTopY - 0.30; // hip pivot sits on seat surface
 
     this.relaxWaypoints = [
       new THREE.Vector3(gapEntryX, momY, gapZ),       // step 1: into the gap
       new THREE.Vector3(couchCenterX, momY, gapZ),     // step 2: walk west through gap
     ];
-    this.relaxSeatPos = new THREE.Vector3(couchCenterX, momY, seatZ);
+    this.relaxSeatPos = new THREE.Vector3(couchCenterX, seatedMomY, seatZ);
     this.relaxWalkStartPos = this.mom.position.clone();
     this.relaxStartRotY = this.mom.rotation.y;
 
