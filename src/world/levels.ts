@@ -114,7 +114,7 @@ export const LEVELS: LevelData[] = [
     playerStart: { x:36, z:24 },
     goal: { x:12, z:26, label:"The Couch" },
     npcs: [
-      { type:"dog", x:36, z:8, radius: DOG_SOUND_RADIUS },
+      { type:"dog", x:18, z:18, radius: DOG_SOUND_RADIUS },
     ],
     traps: [],
     decoys: 1,

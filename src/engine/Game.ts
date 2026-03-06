@@ -2950,8 +2950,8 @@ export class Game {
     ctx.clearRect(0, 0, 64, 64);
     // Draw a bone shape: two circles connected by a rectangle
     ctx.fillStyle = "#D2B48C";
-    ctx.strokeStyle = "#8B7355";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#222222";
+    ctx.lineWidth = 3;
     // Shaft
     ctx.fillRect(20, 26, 24, 12);
     ctx.strokeRect(20, 26, 24, 12);
