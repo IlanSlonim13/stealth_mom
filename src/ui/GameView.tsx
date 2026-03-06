@@ -5,6 +5,7 @@ import { useGameStore } from "../state/gameStore";
 import { LEVELS } from "../world/levels";
 import { INTRO_QUOTES } from "../world/introData";
 import { RELAX_DATA } from "../world/relaxData";
+import { LEVEL1_TUTORIAL } from "../world/tutorialData";
 import { AudioManager } from "../engine/AudioManager";
 import { RELAX_BUTTON_DELAY_MS } from "../utils/constants";
 import { HUD } from "./HUD";
@@ -36,6 +37,7 @@ export function GameView() {
 
   const [bubbleFading, setBubbleFading] = useState(false);
   const [momScreenPos, setMomScreenPos] = useState<{ x: number; y: number } | null>(null);
+  const [tutorialStep, setTutorialStep] = useState(0);
   const decoyModeRef = useRef(decoyMode);
   decoyModeRef.current = decoyMode;
   const throwDecoyRef = useRef(throwDecoyFn);
@@ -52,6 +54,7 @@ export function GameView() {
     if (!mountRef.current) return;
     const el = mountRef.current;
     setBubbleFading(false);
+    setTutorialStep(0);
     setConsumed(new Set());
     setFeedbacks([]);
     setShowNextBtn(false);
@@ -70,6 +73,7 @@ export function GameView() {
         onWon: (text)   => { setWinText(text); },
         onNearPickup: (itemName) => setNearPickup(itemName),
       });
+      if (level.id === 1) game.setIntroPaused(true);
       game.setIntroCompleteCallback(() => {
         setBubbleFading(true);
         setTimeout(() => setIntroActive(false), 600);
@@ -234,40 +238,85 @@ export function GameView() {
             </p>
           </div>
 
-          {/* Speech bubble — positioned above Mom's head */}
-          {momScreenPos && (
-            <div style={{
-              position: "absolute",
-              left: momScreenPos.x,
-              top: momScreenPos.y - 20,
-              transform: "translate(-50%, -100%)",
-              display: "flex", flexDirection: "column", alignItems: "center",
-              animation: "bubbleIn 0.4s ease-out 0.3s both",
-            }}>
-              <div style={{
-                position: "relative",
+          {/* Level 1 tutorial cards (tap-to-advance) */}
+          {level.id === 1 && tutorialStep < LEVEL1_TUTORIAL.length ? (
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                const next = tutorialStep + 1;
+                setTutorialStep(next);
+                if (next >= LEVEL1_TUTORIAL.length) {
+                  gameRef.current?.setIntroPaused(false);
+                }
+              }}
+              style={{
+                position: "absolute", bottom: "12%", left: "50%",
+                transform: "translateX(-50%)",
+                pointerEvents: "auto",
+              }}
+            >
+              <div key={tutorialStep} style={{
                 background: "rgba(255,255,255,0.95)",
                 borderRadius: 16,
-                padding: "12px 20px",
-                maxWidth: 260,
+                padding: "16px 24px",
+                maxWidth: 280,
+                textAlign: "center",
+                animation: "bubbleIn 0.3s ease-out",
               }}>
-                <p style={{
-                  fontFamily: "Georgia, serif", fontSize: 14,
-                  color: "#2A1A2A", margin: 0, textAlign: "center",
-                  fontStyle: "italic", lineHeight: 1.5,
-                }}>
-                  {quote}
+                <p style={{ fontSize: 28, margin: "0 0 8px" }}>
+                  {LEVEL1_TUTORIAL[tutorialStep].emoji}
                 </p>
-                {/* Triangle pointer */}
-                <div style={{
-                  position: "absolute", bottom: -8, left: "50%", marginLeft: -8,
-                  width: 0, height: 0,
-                  borderLeft: "8px solid transparent",
-                  borderRight: "8px solid transparent",
-                  borderTop: "8px solid rgba(255,255,255,0.95)",
-                }} />
+                <p style={{
+                  fontFamily: "Georgia, serif", fontSize: 15,
+                  color: "#2A1A2A", margin: "0 0 12px",
+                  lineHeight: 1.5,
+                }}>
+                  {LEVEL1_TUTORIAL[tutorialStep].text}
+                </p>
+                <p style={{
+                  fontFamily: "Georgia, serif", fontSize: 11,
+                  color: "#999", margin: 0, letterSpacing: 1,
+                }}>
+                  TAP TO CONTINUE
+                </p>
               </div>
             </div>
+          ) : (
+            /* Speech bubble — positioned above Mom's head */
+            momScreenPos && (
+              <div style={{
+                position: "absolute",
+                left: momScreenPos.x,
+                top: momScreenPos.y - 20,
+                transform: "translate(-50%, -100%)",
+                display: "flex", flexDirection: "column", alignItems: "center",
+                animation: "bubbleIn 0.4s ease-out 0.3s both",
+              }}>
+                <div style={{
+                  position: "relative",
+                  background: "rgba(255,255,255,0.95)",
+                  borderRadius: 16,
+                  padding: "12px 20px",
+                  maxWidth: 260,
+                }}>
+                  <p style={{
+                    fontFamily: "Georgia, serif", fontSize: 14,
+                    color: "#2A1A2A", margin: 0, textAlign: "center",
+                    fontStyle: "italic", lineHeight: 1.5,
+                  }}>
+                    {quote}
+                  </p>
+                  {/* Triangle pointer */}
+                  <div style={{
+                    position: "absolute", bottom: -8, left: "50%", marginLeft: -8,
+                    width: 0, height: 0,
+                    borderLeft: "8px solid transparent",
+                    borderRight: "8px solid transparent",
+                    borderTop: "8px solid rgba(255,255,255,0.95)",
+                  }} />
+                </div>
+              </div>
+            )
           )}
         </div>
       )}

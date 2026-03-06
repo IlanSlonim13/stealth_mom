@@ -122,6 +122,7 @@ export class Game {
   private won = false;
   private introPhase = true;
   private introElapsed = 0;
+  private introPaused = false;
   private introFrustStart = 1;
   private introFrustEnd = 7;
   private introCompleteCallback: (() => void) | null = null;
@@ -2658,17 +2659,17 @@ export class Game {
       const dogTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
       const dogTbGroup = new THREE.Group();
       dogTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), dogTbMat));
-      // Stem dots connecting bubble to head
+      // Stem dots trailing down toward dog's head (head at local 0.25, 0.14, 0)
       const dogDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), dogTbMat);
-      dogDot1.position.set(-0.08, -0.18, 0);
+      dogDot1.position.set(0, -0.15, 0);
       dogTbGroup.add(dogDot1);
       const dogDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), dogTbMat);
-      dogDot2.position.set(-0.14, -0.30, 0);
+      dogDot2.position.set(-0.03, -0.28, 0);
       dogTbGroup.add(dogDot2);
       const boneSprite = this.makeBoneSprite();
       boneSprite.position.set(0, 0.02, 0);
       dogTbGroup.add(boneSprite);
-      dogTbGroup.position.set(0.2, 0.50, 0);
+      dogTbGroup.position.set(0.25, 0.55, 0);
       group.add(dogTbGroup);
 
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
@@ -3030,7 +3031,7 @@ export class Game {
 
     // Intro zoom-out phase
     if (this.introPhase) {
-      this.introElapsed += dt;
+      if (!this.introPaused) this.introElapsed += dt;
       if (this.introElapsed > INTRO_HOLD_SECS) {
         const zoomT = Math.min((this.introElapsed - INTRO_HOLD_SECS) / INTRO_ZOOM_SECS, 1);
         const eased = easeOutQuad(zoomT);
@@ -3407,12 +3408,6 @@ export class Game {
     // ── Multi-phase relax animation ──
     this.updateRelaxAnimation(dt);
 
-    // ── Idle seated breathing (after all phases done) ──
-    if (this.relaxPhase >= 7 && this.relaxAnim.type === "idle") {
-      const breath = Math.sin(f * 0.02) * 0.003;
-      if (this.momHead) this.momHead.position.y += breath;
-    }
-
     // ── TV reality show animation ──
     if (this.relaxTvScreen?.material instanceof THREE.MeshStandardMaterial) {
       const mat = this.relaxTvScreen.material;
@@ -3734,6 +3729,10 @@ export class Game {
 
   setIntroCompleteCallback(cb: () => void) {
     this.introCompleteCallback = cb;
+  }
+
+  setIntroPaused(v: boolean) {
+    this.introPaused = v;
   }
 
   setRelaxZoomCallback(cb: () => void) {
@@ -4075,7 +4074,7 @@ export class Game {
 
   /** Project Mom's head into screen (CSS pixel) coordinates */
   getMomScreenPos(): { x: number; y: number } {
-    const headWorldY = this.mom.position.y + 0.9; // approximate head height
+    const headWorldY = this.mom.position.y + 1.05; // above head top (head center ~0.90 + radius 0.13)
     const v = new THREE.Vector3(this.mom.position.x, headWorldY, this.mom.position.z);
     v.project(this.camera);
     const w = this.renderer.domElement.clientWidth;
