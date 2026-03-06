@@ -465,7 +465,6 @@ export class Game {
       [fenceMinX + 1.5, fenceMinZ + 2],
       [fenceMaxX - 1.5, fenceMinZ + 2],
       [(fenceMinX + fenceMaxX) / 2 - 2, fenceMinZ + 1.5],
-      [fenceMinX + 2, fenceMaxZ - 1.5],
       [fenceMaxX - 2, houseMinZ - 5],
       [fenceMinX + 1.5, houseMinZ - 5],
     ];
