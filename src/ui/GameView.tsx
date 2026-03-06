@@ -82,6 +82,19 @@ export function GameView() {
         setRelaxActive(true);
         AudioManager.preload(["mom-sigh"]);
         setTimeout(() => AudioManager.play("mom-sigh"), 400);
+        // Enter 3D relax scene for levels that support it
+        const rd = RELAX_DATA[level.id];
+        if (rd?.sceneMode === "3d") {
+          game.enterRelaxScene();
+        }
+      });
+      game.setRelaxClickCallback((itemId, feedback, screenX, screenY) => {
+        feedbackKey.current++;
+        const fb: ClickFeedback = { text: feedback, x: screenX, y: screenY - 30, key: feedbackKey.current };
+        setFeedbacks(prev => [...prev, fb]);
+        setTimeout(() => {
+          setFeedbacks(prev => prev.filter(f => f.key !== fb.key));
+        }, 1200);
       });
       gameRef.current = game;
     };
@@ -128,10 +141,22 @@ export function GameView() {
     }
   }, [inventory, levelIdx]);
 
+  const relaxActiveRef = useRef(relaxActive);
+  relaxActiveRef.current = relaxActive;
+
   const handleInput = useCallback(
     (e: React.MouseEvent) => {
       const game = gameRef.current;
       if (!game) return;
+      // During 3D relax scene, forward clicks to the relax handler
+      if (relaxActiveRef.current) {
+        const level = LEVELS[useGameStore.getState().levelIdx];
+        const rd = RELAX_DATA[level.id];
+        if (rd?.sceneMode === "3d") {
+          game.handleRelaxClick(e.clientX, e.clientY);
+          return;
+        }
+      }
       const result = game.handleTap(e.clientX, e.clientY, decoyMode);
       if (result === "thrown") {
         throwDecoyFn();
@@ -248,127 +273,215 @@ export function GameView() {
 
       {/* Relaxation overlay — on top of zoomed-in 3D scene */}
       {relaxActive && relaxData && (
-        <div style={{
-          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-          display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center",
-          background: "rgba(0,0,0,0.35)",
-          fontFamily: "Georgia, serif", color: "#FFF",
-          userSelect: "none",
-        }}>
-          <style>{`
-            @keyframes relaxFadeIn {
-              from { opacity:0; transform:translateY(12px); }
-              to   { opacity:1; transform:translateY(0); }
-            }
-            @keyframes floatUp {
-              from { opacity:1; transform:translateY(0); }
-              to   { opacity:0; transform:translateY(-40px); }
-            }
-            @keyframes gentleBob {
-              0%, 100% { transform:translateY(0); }
-              50% { transform:translateY(-4px); }
-            }
-            @keyframes buttonReveal {
-              from { opacity:0; transform:translateY(8px); }
-              to   { opacity:1; transform:translateY(0); }
-            }
-          `}</style>
-
-          {/* Mom's relaxation quote */}
-          <p style={{
-            fontSize: 22, fontStyle: "italic", margin: "0 0 40px",
-            opacity: relaxQuoteVisible ? 0.8 : 0,
-            transition: "opacity 1.5s ease-in",
-            textAlign: "center", padding: "0 32px",
-            letterSpacing: 1,
-          }}>
-            {relaxData.momQuote}
-          </p>
-
-          {/* Interactive items — no labels, just objects that react */}
+        relaxData.sceneMode === "3d" ? (
+          /* ── 3D relax scene: minimal overlay with floating feedback + buttons ── */
           <div style={{
-            display: "flex", gap: 24, flexWrap: "wrap",
-            justifyContent: "center", alignItems: "center",
-            padding: "0 24px", maxWidth: 340,
+            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+            pointerEvents: "none",
+            fontFamily: "Georgia, serif", color: "#FFF",
+            userSelect: "none",
           }}>
-            {relaxData.items.map((item, i) => {
-              const isConsumed = consumed.has(item.id);
-              return (
-                <div
-                  key={item.id}
-                  onClick={(e) => handleItemClick(item.id, item.clickEmoji, item.consumable, e)}
+            <style>{`
+              @keyframes relaxFadeIn {
+                from { opacity:0; transform:translateY(12px); }
+                to   { opacity:1; transform:translateY(0); }
+              }
+              @keyframes floatUp {
+                from { opacity:1; transform:translateY(0); }
+                to   { opacity:0; transform:translateY(-40px); }
+              }
+              @keyframes buttonReveal {
+                from { opacity:0; transform:translateY(8px); }
+                to   { opacity:1; transform:translateY(0); }
+              }
+            `}</style>
+
+            {/* Mom's quote — shown briefly at top */}
+            <p style={{
+              position: "absolute", top: "8%", left: 0, right: 0,
+              fontSize: 22, fontStyle: "italic", margin: 0,
+              opacity: relaxQuoteVisible ? 0.8 : 0,
+              transition: "opacity 1.5s ease-in",
+              textAlign: "center", padding: "0 32px",
+              letterSpacing: 1,
+              textShadow: "0 2px 8px rgba(0,0,0,0.6)",
+            }}>
+              {relaxData.momQuote}
+            </p>
+
+            {/* Floating click feedback */}
+            {feedbacks.map(fb => (
+              <div key={fb.key} style={{
+                position: "fixed",
+                left: fb.x,
+                top: fb.y,
+                transform: "translateX(-50%)",
+                fontSize: 15,
+                fontStyle: "italic",
+                color: "rgba(255,255,255,0.95)",
+                pointerEvents: "none",
+                animation: "floatUp 1.2s ease-out forwards",
+                whiteSpace: "nowrap",
+                textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+              }}>
+                {fb.text}
+              </div>
+            ))}
+
+            {/* Next level / Menu buttons */}
+            <div style={{
+              position: "absolute", bottom: 40, left: 0, right: 0,
+              display: "flex", gap: 12, justifyContent: "center",
+              alignItems: "center", flexDirection: "column",
+              pointerEvents: "auto",
+            }}>
+              {showNextBtn && (
+                <button
+                  onClick={() => isLast ? setScreen("menu") : startLevel(levelIdx + 1)}
                   style={{
-                    fontSize: 52,
-                    cursor: isConsumed ? "default" : "pointer",
-                    opacity: isConsumed ? 0 : 1,
-                    transition: "opacity 0.8s ease-out, transform 0.15s ease",
-                    animation: `relaxFadeIn 0.6s ease-out ${0.4 + i * 0.15}s both, gentleBob ${2.5 + i * 0.3}s ease-in-out ${i * 0.5}s infinite`,
-                    pointerEvents: isConsumed ? "none" : "auto",
-                  }}
-                  onMouseDown={(e) => {
-                    if (!isConsumed) (e.currentTarget as HTMLElement).style.transform = "scale(1.2)";
-                  }}
-                  onMouseUp={(e) => {
-                    (e.currentTarget as HTMLElement).style.transform = "";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.transform = "";
+                    ...relaxBtnStyle("rgba(255,255,255,0.12)"),
+                    animation: "buttonReveal 0.8s ease-out both",
                   }}
                 >
-                  {item.emoji}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Floating click feedback */}
-          {feedbacks.map(fb => (
-            <div key={fb.key} style={{
-              position: "fixed",
-              left: fb.x,
-              top: fb.y,
-              transform: "translateX(-50%)",
-              fontSize: 13,
-              fontStyle: "italic",
-              color: "rgba(255,255,255,0.9)",
-              pointerEvents: "none",
-              animation: "floatUp 1.2s ease-out forwards",
-              whiteSpace: "nowrap",
-            }}>
-              {fb.text}
-            </div>
-          ))}
-
-          {/* Next level / Menu buttons */}
-          <div style={{
-            position: "absolute", bottom: 40, left: 0, right: 0,
-            display: "flex", gap: 12, justifyContent: "center",
-            alignItems: "center", flexDirection: "column",
-          }}>
-            {showNextBtn && (
+                  {isLast ? "You Win!" : "Next Level"}
+                </button>
+              )}
               <button
-                onClick={() => isLast ? setScreen("menu") : startLevel(levelIdx + 1)}
+                onClick={() => setScreen("menu")}
                 style={{
-                  ...relaxBtnStyle("rgba(255,255,255,0.12)"),
-                  animation: "buttonReveal 0.8s ease-out both",
+                  ...relaxBtnStyle("transparent"),
+                  opacity: 0.3, fontSize: 11,
+                  animation: "relaxFadeIn 0.6s ease-out 1.5s both",
                 }}
               >
-                {isLast ? "You Win!" : "Next Level"}
+                Menu
               </button>
-            )}
-            <button
-              onClick={() => setScreen("menu")}
-              style={{
-                ...relaxBtnStyle("transparent"),
-                opacity: 0.3, fontSize: 11,
-                animation: "relaxFadeIn 0.6s ease-out 1.5s both",
-              }}
-            >
-              Menu
-            </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* ── Emoji overlay relax (levels 2-5) ── */
+          <div style={{
+            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.35)",
+            fontFamily: "Georgia, serif", color: "#FFF",
+            userSelect: "none",
+          }}>
+            <style>{`
+              @keyframes relaxFadeIn {
+                from { opacity:0; transform:translateY(12px); }
+                to   { opacity:1; transform:translateY(0); }
+              }
+              @keyframes floatUp {
+                from { opacity:1; transform:translateY(0); }
+                to   { opacity:0; transform:translateY(-40px); }
+              }
+              @keyframes gentleBob {
+                0%, 100% { transform:translateY(0); }
+                50% { transform:translateY(-4px); }
+              }
+              @keyframes buttonReveal {
+                from { opacity:0; transform:translateY(8px); }
+                to   { opacity:1; transform:translateY(0); }
+              }
+            `}</style>
+
+            {/* Mom's relaxation quote */}
+            <p style={{
+              fontSize: 22, fontStyle: "italic", margin: "0 0 40px",
+              opacity: relaxQuoteVisible ? 0.8 : 0,
+              transition: "opacity 1.5s ease-in",
+              textAlign: "center", padding: "0 32px",
+              letterSpacing: 1,
+            }}>
+              {relaxData.momQuote}
+            </p>
+
+            {/* Interactive items — no labels, just objects that react */}
+            <div style={{
+              display: "flex", gap: 24, flexWrap: "wrap",
+              justifyContent: "center", alignItems: "center",
+              padding: "0 24px", maxWidth: 340,
+            }}>
+              {relaxData.items.map((item, i) => {
+                const isConsumed = consumed.has(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    onClick={(e) => handleItemClick(item.id, item.clickEmoji, item.consumable, e)}
+                    style={{
+                      fontSize: 52,
+                      cursor: isConsumed ? "default" : "pointer",
+                      opacity: isConsumed ? 0 : 1,
+                      transition: "opacity 0.8s ease-out, transform 0.15s ease",
+                      animation: `relaxFadeIn 0.6s ease-out ${0.4 + i * 0.15}s both, gentleBob ${2.5 + i * 0.3}s ease-in-out ${i * 0.5}s infinite`,
+                      pointerEvents: isConsumed ? "none" : "auto",
+                    }}
+                    onMouseDown={(e) => {
+                      if (!isConsumed) (e.currentTarget as HTMLElement).style.transform = "scale(1.2)";
+                    }}
+                    onMouseUp={(e) => {
+                      (e.currentTarget as HTMLElement).style.transform = "";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.transform = "";
+                    }}
+                  >
+                    {item.emoji}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Floating click feedback */}
+            {feedbacks.map(fb => (
+              <div key={fb.key} style={{
+                position: "fixed",
+                left: fb.x,
+                top: fb.y,
+                transform: "translateX(-50%)",
+                fontSize: 13,
+                fontStyle: "italic",
+                color: "rgba(255,255,255,0.9)",
+                pointerEvents: "none",
+                animation: "floatUp 1.2s ease-out forwards",
+                whiteSpace: "nowrap",
+              }}>
+                {fb.text}
+              </div>
+            ))}
+
+            {/* Next level / Menu buttons */}
+            <div style={{
+              position: "absolute", bottom: 40, left: 0, right: 0,
+              display: "flex", gap: 12, justifyContent: "center",
+              alignItems: "center", flexDirection: "column",
+            }}>
+              {showNextBtn && (
+                <button
+                  onClick={() => isLast ? setScreen("menu") : startLevel(levelIdx + 1)}
+                  style={{
+                    ...relaxBtnStyle("rgba(255,255,255,0.12)"),
+                    animation: "buttonReveal 0.8s ease-out both",
+                  }}
+                >
+                  {isLast ? "You Win!" : "Next Level"}
+                </button>
+              )}
+              <button
+                onClick={() => setScreen("menu")}
+                style={{
+                  ...relaxBtnStyle("transparent"),
+                  opacity: 0.3, fontSize: 11,
+                  animation: "relaxFadeIn 0.6s ease-out 1.5s both",
+                }}
+              >
+                Menu
+              </button>
+            </div>
+          </div>
+        )
       )}
     </div>
   );

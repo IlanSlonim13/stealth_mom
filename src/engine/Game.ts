@@ -152,6 +152,30 @@ export class Game {
   private outdoorCars: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number }[] = [];
   private outdoorPeople: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D }[] = [];
 
+  // ── Relax scene (Level 1 3D interactive) ───────────────────────────────────
+  private relaxSceneActive = false;
+  private relaxClickCallback: ((itemId: string, feedback: string, screenX: number, screenY: number) => void) | null = null;
+  private relaxClickables: THREE.Object3D[] = [];
+  private relaxCheesePieces: THREE.Mesh[] = [];
+  private relaxWineGlass: THREE.Group | null = null;
+  private relaxTvScreen: THREE.Mesh | null = null;
+  private relaxTvLight: THREE.PointLight | null = null;
+
+  // Relax animation state machine
+  private relaxAnim: {
+    type: "idle" | "cheese-reach" | "cheese-eat" | "cheese-return" | "wine-reach" | "wine-drink" | "wine-return";
+    elapsed: number;
+    duration: number;
+    target?: THREE.Mesh; // cheese piece being eaten
+  } = { type: "idle", elapsed: 0, duration: 0 };
+
+  // Sitting pose targets (set once, lerped toward)
+  private relaxSitT = 0; // 0 = standing, 1 = fully sitting
+  private relaxSitting = false;
+
+  // Store Mom's original positions for the sitting transition
+  private momOrigPos: THREE.Vector3 | null = null;
+
   private level: LevelData;
   private callbacks: GameCallbacks;
   private element: HTMLElement;
@@ -2933,6 +2957,12 @@ export class Game {
           this.callbacks.onWon(this.level.winText);
         }
       }
+
+      // ── 3D relax scene updates ──
+      if (this.relaxSceneActive) {
+        this.updateRelaxScene(dt);
+      }
+
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -3304,6 +3334,192 @@ export class Game {
     }
   }
 
+  // ── Relax scene update — sitting pose, animations, TV ─────────────────────
+  private updateRelaxScene(dt: number) {
+    const f = this.frame;
+
+    // ── Smooth sitting transition ──
+    if (this.relaxSitting && this.relaxSitT < 1) {
+      this.relaxSitT = Math.min(this.relaxSitT + dt * 1.2, 1);
+      const t = easeOutQuad(this.relaxSitT);
+
+      // Move Mom onto the couch seat (slightly back and lower)
+      if (this.momOrigPos) {
+        // Shift Mom slightly north (toward couch back) and lower for sitting
+        this.mom.position.y = lerp(this.momOrigPos.y, this.momOrigPos.y - 0.12, t);
+        this.mom.position.z = lerp(this.momOrigPos.z, this.momOrigPos.z + TILE_SIZE * 0.3, t);
+      }
+
+      // Rotate legs forward (feet up on coffee table direction)
+      if (this.momLeftLeg) this.momLeftLeg.rotation.x = lerp(0, -1.3, t);
+      if (this.momRightLeg) this.momRightLeg.rotation.x = lerp(0, -1.3, t);
+
+      // Move legs down to seat level
+      if (this.momLeftLeg) this.momLeftLeg.position.y = lerp(0.15, 0.25, t);
+      if (this.momRightLeg) this.momRightLeg.position.y = lerp(0.15, 0.25, t);
+
+      // Lean torso back slightly
+      this.mom.rotation.x = lerp(0, 0.15, t);
+
+      // Arms resting on couch arms (slightly outward)
+      if (this.momLeftArm) this.momLeftArm.rotation.z = lerp(0, 0.3, t);
+      if (this.momRightArm) this.momRightArm.rotation.z = lerp(0, -0.3, t);
+      if (this.momLeftArm) this.momLeftArm.rotation.x = lerp(0, 0.2, t);
+      if (this.momRightArm) this.momRightArm.rotation.x = lerp(0, 0.2, t);
+
+      // Head tilts back slightly, relaxed
+      if (this.momHead) this.momHead.rotation.x = lerp(0, -0.1, t);
+    }
+
+    // ── Idle seated breathing ──
+    if (this.relaxSitT >= 1 && this.relaxAnim.type === "idle") {
+      const breath = Math.sin(f * 0.02) * 0.003;
+      if (this.momHead) this.momHead.position.y += breath;
+    }
+
+    // ── TV reality show animation ──
+    if (this.relaxTvScreen?.material instanceof THREE.MeshStandardMaterial) {
+      const mat = this.relaxTvScreen.material;
+      // Slowly cycling colors to simulate a reality show
+      const r = 0.3 + Math.sin(f * 0.013) * 0.2 + Math.sin(f * 0.031) * 0.1;
+      const g = 0.35 + Math.sin(f * 0.017 + 1.2) * 0.15 + Math.sin(f * 0.023) * 0.1;
+      const b = 0.4 + Math.sin(f * 0.011 + 2.4) * 0.2;
+      mat.color.setRGB(r, g, b);
+      mat.emissive.setRGB(r * 0.8, g * 0.8, b * 0.8);
+      // Occasional scene-change flash
+      if (mat.emissiveIntensity > 1.5) {
+        mat.emissiveIntensity = Math.max(1.2, mat.emissiveIntensity - dt * 4);
+      }
+    }
+    // Sync TV point light color
+    if (this.relaxTvLight && this.relaxTvScreen?.material instanceof THREE.MeshStandardMaterial) {
+      this.relaxTvLight.color.copy(this.relaxTvScreen.material.emissive);
+    }
+
+    // ── Glow pulses on clickable items ──
+    for (const gm of this.glowMeshes) {
+      if (gm.userData.isGlow && gm.material instanceof THREE.MeshStandardMaterial) {
+        gm.material.opacity = 0.15 + Math.sin(f * 0.06) * 0.15;
+        gm.material.emissiveIntensity = 0.4 + Math.sin(f * 0.06) * 0.3;
+      }
+    }
+
+    // ── Arm animations (cheese eating, wine drinking) ──
+    this.updateRelaxAnim(dt);
+  }
+
+  private updateRelaxAnim(dt: number) {
+    const anim = this.relaxAnim;
+    if (anim.type === "idle") return;
+
+    anim.elapsed += dt;
+    const t = Math.min(anim.elapsed / anim.duration, 1);
+    const eased = easeOutQuad(t);
+
+    switch (anim.type) {
+      case "cheese-reach": {
+        // Right arm reaches forward toward coffee table
+        if (this.momRightArm) {
+          this.momRightArm.rotation.x = lerp(0.2, -1.0, eased);
+          this.momRightArm.rotation.z = lerp(-0.3, -0.1, eased);
+        }
+        if (t >= 1) {
+          // Grab the cheese piece — hide it
+          if (anim.target) {
+            anim.target.visible = false;
+            // Remove from clickables
+            const idx = this.relaxClickables.indexOf(anim.target);
+            if (idx >= 0) this.relaxClickables.splice(idx, 1);
+            const pidx = this.relaxCheesePieces.indexOf(anim.target);
+            if (pidx >= 0) this.relaxCheesePieces.splice(pidx, 1);
+          }
+          this.relaxAnim = { type: "cheese-eat", elapsed: 0, duration: 0.6 };
+        }
+        break;
+      }
+      case "cheese-eat": {
+        // Bring arm up to mouth
+        if (this.momRightArm) {
+          this.momRightArm.rotation.x = lerp(-1.0, -0.3, eased);
+          this.momRightArm.rotation.z = lerp(-0.1, -0.15, eased);
+        }
+        // Head tilts forward slightly to "eat"
+        if (this.momHead && t > 0.3 && t < 0.7) {
+          this.momHead.rotation.x = lerp(-0.1, 0.05, (t - 0.3) / 0.4);
+        }
+        if (t >= 1) {
+          this.relaxAnim = { type: "cheese-return", elapsed: 0, duration: 0.4 };
+        }
+        break;
+      }
+      case "cheese-return": {
+        // Return arm to resting position
+        if (this.momRightArm) {
+          this.momRightArm.rotation.x = lerp(-0.3, 0.2, eased);
+          this.momRightArm.rotation.z = lerp(-0.15, -0.3, eased);
+        }
+        if (this.momHead) this.momHead.rotation.x = lerp(0.05, -0.1, eased);
+        if (t >= 1) {
+          this.relaxAnim = { type: "idle", elapsed: 0, duration: 0 };
+        }
+        break;
+      }
+      case "wine-reach": {
+        // Left arm reaches to the side (toward side table)
+        if (this.momLeftArm) {
+          this.momLeftArm.rotation.x = lerp(0.2, -0.4, eased);
+          this.momLeftArm.rotation.z = lerp(0.3, 0.6, eased);
+        }
+        if (t >= 1) {
+          this.relaxAnim = { type: "wine-drink", elapsed: 0, duration: 0.8 };
+        }
+        break;
+      }
+      case "wine-drink": {
+        // Bring arm from side to mouth (across body and up)
+        if (this.momLeftArm) {
+          // Phase 1: bring to mouth (first 50%)
+          if (t < 0.5) {
+            const subT = easeOutQuad(t / 0.5);
+            this.momLeftArm.rotation.x = lerp(-0.4, -0.6, subT);
+            this.momLeftArm.rotation.z = lerp(0.6, 0.1, subT);
+          }
+          // Phase 2: tip and hold (50-100%)
+          else {
+            const subT = (t - 0.5) / 0.5;
+            this.momLeftArm.rotation.x = lerp(-0.6, -0.5, subT);
+            // Tilt wrist/glass
+            this.momLeftArm.rotation.z = lerp(0.1, 0.15, Math.sin(subT * Math.PI) * 0.5 + 0.5);
+          }
+        }
+        // Head tilts back for drinking
+        if (this.momHead) {
+          if (t > 0.3 && t < 0.8) {
+            this.momHead.rotation.x = lerp(-0.1, -0.2, (t - 0.3) / 0.5);
+          } else if (t >= 0.8) {
+            this.momHead.rotation.x = lerp(-0.2, -0.1, (t - 0.8) / 0.2);
+          }
+        }
+        if (t >= 1) {
+          this.relaxAnim = { type: "wine-return", elapsed: 0, duration: 0.5 };
+        }
+        break;
+      }
+      case "wine-return": {
+        // Return arm to resting position
+        if (this.momLeftArm) {
+          this.momLeftArm.rotation.x = lerp(-0.5, 0.2, eased);
+          this.momLeftArm.rotation.z = lerp(0.15, 0.3, eased);
+        }
+        if (this.momHead) this.momHead.rotation.x = lerp(-0.1, -0.1, eased);
+        if (t >= 1) {
+          this.relaxAnim = { type: "idle", elapsed: 0, duration: 0 };
+        }
+        break;
+      }
+    }
+  }
+
   private checkGoal() {
     if (this.won) return;
     const lvl = this.level;
@@ -3347,6 +3563,224 @@ export class Game {
 
   setDeferredTapHandler(cb: (x: number, y: number) => void) {
     this.onDeferredTap = cb;
+  }
+
+  setRelaxClickCallback(cb: (itemId: string, feedback: string, screenX: number, screenY: number) => void) {
+    this.relaxClickCallback = cb;
+  }
+
+  /** Called from GameView after zoom completes for 3D relax scenes */
+  enterRelaxScene() {
+    this.relaxSceneActive = true;
+    this.relaxSitting = true;
+    this.momOrigPos = this.mom.position.clone();
+
+    // Find existing furniture groups by label
+    const tvGroup = this.furnitureGroups.find(g => g.userData.label === "tv");
+    const sideTableGroup = this.furnitureGroups.find(g => g.userData.label === "sideTable");
+    const coffeeTableGroup = this.furnitureGroups.find(g => g.userData.label === "coffeeTable");
+
+    // ── Turn on the TV ──
+    if (tvGroup) {
+      // Find the screen face mesh (the emissive one) inside the tvUnit group
+      tvGroup.traverse((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+          const mat = child.material;
+          if (mat.emissive && mat.emissiveIntensity > 0.3 && mat.color.getHexString() === "0a0a2a") {
+            // This is the TV screen face — make it glow
+            this.relaxTvScreen = child;
+            child.material = new THREE.MeshStandardMaterial({
+              color: "#446688",
+              emissive: "#446688",
+              emissiveIntensity: 1.2,
+              roughness: 0.3,
+            });
+            child.userData.relaxItem = "tv";
+            this.relaxClickables.push(child);
+          }
+        }
+      });
+      // Add a point light to simulate TV glow
+      const tvLight = new THREE.PointLight("#6688AA", 0.6, 3);
+      tvLight.position.set(0, 0.6, 0.2);
+      tvGroup.add(tvLight);
+      this.relaxTvLight = tvLight;
+    }
+
+    // ── Enhance wine glass on side table — make it more prominent and clickable ──
+    if (sideTableGroup) {
+      // Build a nicer wine glass on the side table
+      const wineGroup = new THREE.Group();
+
+      // Stem
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.008, 0.008, 0.06, 6),
+        new THREE.MeshStandardMaterial({ color: "#E8F0F0", roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.7 })
+      );
+      stem.position.y = 0.03;
+      wineGroup.add(stem);
+
+      // Base
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.025, 0.025, 0.006, 8),
+        new THREE.MeshStandardMaterial({ color: "#E8F0F0", roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.7 })
+      );
+      base.position.y = 0;
+      wineGroup.add(base);
+
+      // Bowl (open cylinder)
+      const bowl = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.015, 0.06, 8, 1, true),
+        new THREE.MeshStandardMaterial({ color: "#E0F0F0", roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.5 })
+      );
+      bowl.position.y = 0.09;
+      wineGroup.add(bowl);
+
+      // Wine liquid
+      const wine = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.032, 0.013, 0.04, 8),
+        new THREE.MeshStandardMaterial({ color: "#8B1A2A", emissive: "#3A0808", emissiveIntensity: 0.3, roughness: 0.5 })
+      );
+      wine.position.y = 0.08;
+      wineGroup.add(wine);
+
+      wineGroup.position.set(0.04, 0.34, -0.02);
+      wineGroup.userData.relaxItem = "wine";
+      sideTableGroup.add(wineGroup);
+      this.relaxWineGlass = wineGroup;
+      this.relaxClickables.push(wineGroup);
+
+      // Add glow hint
+      const wineGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.05, 8, 8),
+        new THREE.MeshStandardMaterial({ color: "#FFD700", emissive: "#FFD700", emissiveIntensity: 0.6, transparent: true, opacity: 0.3 })
+      );
+      wineGlow.position.copy(wineGroup.position);
+      wineGlow.position.y += 0.06;
+      wineGlow.userData.isGlow = true;
+      sideTableGroup.add(wineGlow);
+      this.glowMeshes.push(wineGlow);
+    }
+
+    // ── Build cheese tray on coffee table ──
+    if (coffeeTableGroup) {
+      const trayGroup = new THREE.Group();
+
+      // Wooden tray/board
+      const tray = new THREE.Mesh(
+        new THREE.BoxGeometry(0.2, 0.015, 0.12),
+        new THREE.MeshStandardMaterial({ color: "#B8956A", roughness: 0.8 })
+      );
+      tray.position.y = 0;
+      tray.castShadow = true;
+      trayGroup.add(tray);
+
+      // Cheese pieces (4 small wedges)
+      const cheeseMat = new THREE.MeshStandardMaterial({ color: "#F0D050", roughness: 0.6 });
+      const cheesePositions = [
+        { x: -0.05, z: -0.02 },
+        { x: 0.03, z: -0.03 },
+        { x: -0.02, z: 0.03 },
+        { x: 0.06, z: 0.02 },
+      ];
+      cheesePositions.forEach((pos, i) => {
+        const piece = new THREE.Mesh(
+          new THREE.BoxGeometry(0.03, 0.02, 0.025),
+          cheeseMat.clone()
+        );
+        piece.position.set(pos.x, 0.018, pos.z);
+        piece.rotation.y = Math.random() * Math.PI;
+        piece.castShadow = true;
+        piece.userData.relaxItem = "cheese";
+        piece.userData.cheeseIdx = i;
+        trayGroup.add(piece);
+        this.relaxCheesePieces.push(piece);
+        this.relaxClickables.push(piece);
+      });
+
+      // Position tray on top of coffee table
+      trayGroup.position.set(0, 0.22, 0);
+      coffeeTableGroup.add(trayGroup);
+
+      // Add glow hint for cheese
+      const cheeseGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 8, 8),
+        new THREE.MeshStandardMaterial({ color: "#FFD700", emissive: "#FFD700", emissiveIntensity: 0.6, transparent: true, opacity: 0.3 })
+      );
+      cheeseGlow.position.set(0, 0.28, 0);
+      cheeseGlow.userData.isGlow = true;
+      coffeeTableGroup.add(cheeseGlow);
+      this.glowMeshes.push(cheeseGlow);
+    }
+
+    // Hide the goal ring
+    if (this.goalRing) this.goalRing.visible = false;
+  }
+
+  /** Handle click during 3D relax scene — returns true if something was clicked */
+  handleRelaxClick(clientX: number, clientY: number): boolean {
+    if (!this.relaxSceneActive) return false;
+    if (this.relaxAnim.type !== "idle") return false; // animation in progress
+
+    const rect = this.element.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(mouse, this.camera);
+
+    // Collect all clickable meshes (need to traverse groups)
+    const clickTargets: THREE.Object3D[] = [];
+    for (const obj of this.relaxClickables) {
+      if (obj instanceof THREE.Group) {
+        obj.traverse((c: THREE.Object3D) => { if (c instanceof THREE.Mesh) clickTargets.push(c); });
+      } else {
+        clickTargets.push(obj);
+      }
+    }
+
+    const hits = ray.intersectObjects(clickTargets, false);
+    if (hits.length === 0) return false;
+
+    // Walk up to find the userData.relaxItem
+    let hit = hits[0].object;
+    let itemId: string | undefined;
+    while (hit) {
+      if (hit.userData?.relaxItem) { itemId = hit.userData.relaxItem; break; }
+      hit = hit.parent as THREE.Object3D;
+    }
+    if (!itemId) return false;
+
+    if (itemId === "cheese") {
+      // Find which cheese piece was clicked
+      const cheeseMesh = this.relaxCheesePieces.find(p => {
+        let obj: THREE.Object3D | null = hits[0].object;
+        while (obj) { if (obj === p) return true; obj = obj.parent; }
+        return false;
+      });
+      if (!cheeseMesh) return false;
+      this.relaxAnim = { type: "cheese-reach", elapsed: 0, duration: 0.5, target: cheeseMesh };
+      this.relaxClickCallback?.("cheese", "*mmm*", clientX, clientY);
+      return true;
+    }
+
+    if (itemId === "wine") {
+      this.relaxAnim = { type: "wine-reach", elapsed: 0, duration: 0.5 };
+      this.relaxClickCallback?.("wine", "*sip*", clientX, clientY);
+      return true;
+    }
+
+    if (itemId === "tv") {
+      // Flash the TV
+      if (this.relaxTvScreen?.material instanceof THREE.MeshStandardMaterial) {
+        this.relaxTvScreen.material.emissiveIntensity = 3.0;
+      }
+      this.relaxClickCallback?.("tv", "*drama!*", clientX, clientY);
+      return true;
+    }
+
+    return false;
   }
 
   handleTap(clientX: number, clientY: number, decoyMode: false | "throw"): false | "thrown" {
