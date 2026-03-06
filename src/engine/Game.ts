@@ -2988,6 +2988,19 @@ export class Game {
     return g;
   }
 
+  /** Project Mom's head into screen (CSS pixel) coordinates */
+  getMomScreenPos(): { x: number; y: number } {
+    const headWorldY = this.mom.position.y + 0.9; // approximate head height
+    const v = new THREE.Vector3(this.mom.position.x, headWorldY, this.mom.position.z);
+    v.project(this.camera);
+    const w = this.renderer.domElement.clientWidth;
+    const h = this.renderer.domElement.clientHeight;
+    return {
+      x: (v.x * 0.5 + 0.5) * w,
+      y: (-v.y * 0.5 + 0.5) * h,
+    };
+  }
+
   destroy() {
     cancelAnimationFrame(this.animId);
     window.removeEventListener("resize", this.onResize);
