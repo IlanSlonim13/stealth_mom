@@ -285,9 +285,9 @@ export class Game {
     const houseW = houseMaxX - houseMinX;
     const houseD = houseMaxZ - houseMinZ;
 
-    // Yard padding: small front yard, big back yard
+    // Yard padding: small front yard, large back yard
     const frontPad = 2.0 * TS;
-    const backPad = 6.0 * TS;
+    const backPad = 14.0 * TS;
     const sidePad = 2.5 * TS;
 
     const fenceMinX = houseMinX - sidePad;
@@ -436,12 +436,14 @@ export class Game {
       this.scene.add(stem);
     }
 
-    // ── Trees in the back yard ──
+    // ── Trees in the back yard (spread across larger yard) ──
     const treePositions: [number, number][] = [
       [fenceMinX + 1.5, fenceMinZ + 2],
       [fenceMaxX - 1.5, fenceMinZ + 2],
-      [(fenceMinX + fenceMaxX) / 2, fenceMinZ + 1.5],
+      [(fenceMinX + fenceMaxX) / 2 - 2, fenceMinZ + 1.5],
       [fenceMinX + 2, fenceMaxZ - 1.5],
+      [fenceMaxX - 2, houseMinZ - 5],
+      [fenceMinX + 1.5, houseMinZ - 5],
     ];
     const addTree = (tx: number, tz: number) => {
       const trunk = new THREE.Mesh(
@@ -476,6 +478,210 @@ export class Game {
     const mailFlag = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.08, 0.06), stdMat("#CC2222"));
     mailFlag.position.set(mbX + 0.12, 0.68, mbZ);
     this.scene.add(mailFlag);
+
+    // ── Attached Garage (right side of house, driveway leads into it) ──
+    const garageW = 2.0;
+    const garageD = houseD * 0.45;
+    const garageX = houseMaxX + garageW / 2;
+    const garageZ = houseMaxZ - garageD / 2;
+    // Garage walls
+    const garageMat = stdMat(palette.wall, 0.85);
+    const garageBody = new THREE.Mesh(
+      new THREE.BoxGeometry(garageW, 1.3, garageD),
+      garageMat,
+    );
+    garageBody.position.set(garageX, 0.65, garageZ);
+    garageBody.castShadow = true;
+    this.scene.add(garageBody);
+    // Garage roof (flat, slightly sloped look via layers)
+    for (let r = 0; r < 3; r++) {
+      const roofLayer = new THREE.Mesh(
+        new THREE.BoxGeometry(garageW + 0.3 - r * 0.15, 0.06, garageD + 0.3 - r * 0.15),
+        stdMat("#7A5A3A", 0.8),
+      );
+      roofLayer.position.set(garageX, 1.33 + r * 0.06, garageZ);
+      this.scene.add(roofLayer);
+    }
+    // Garage door (front-facing, segmented panels)
+    const garageDoorMat = stdMat("#A0907A", 0.75);
+    const garageDoor = new THREE.Mesh(
+      new THREE.BoxGeometry(garageW * 0.8, 1.0, 0.04),
+      garageDoorMat,
+    );
+    garageDoor.position.set(garageX, 0.52, garageZ + garageD / 2 + 0.02);
+    this.scene.add(garageDoor);
+    // Garage door panel lines (horizontal segments)
+    for (let i = 0; i < 4; i++) {
+      const panelLine = new THREE.Mesh(
+        new THREE.BoxGeometry(garageW * 0.78, 0.01, 0.01),
+        stdMat("#8A7A6A"),
+      );
+      panelLine.position.set(garageX, 0.15 + i * 0.25, garageZ + garageD / 2 + 0.04);
+      this.scene.add(panelLine);
+    }
+    // Garage door handle
+    const garHandle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.025, 0.025),
+      stdMat("#666666", 0.3),
+    );
+    garHandle.position.set(garageX, 0.45, garageZ + garageD / 2 + 0.05);
+    this.scene.add(garHandle);
+    // Extend driveway into garage
+    const dwExtend = new THREE.Mesh(
+      new THREE.BoxGeometry(garageW * 0.9, 0.02, garageD * 0.3),
+      stdMat("#B0A898", 0.9),
+    );
+    dwExtend.position.set(garageX, 0.005, garageZ + garageD / 2 + garageD * 0.15);
+    dwExtend.receiveShadow = true;
+    this.scene.add(dwExtend);
+
+    // ── Playhouse (back yard, left side) ──
+    const phX = fenceMinX + 2.5;
+    const phZ = fenceMinZ + 3.0;
+    const phGroup = new THREE.Group();
+    // Walls (colorful)
+    const phBody = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 0.9, 1.0),
+      stdMat("#E84040", 0.7),
+    );
+    phBody.position.y = 0.45;
+    phGroup.add(phBody);
+    // Peaked roof
+    const phRoof = new THREE.Mesh(
+      new THREE.ConeGeometry(0.95, 0.5, 4),
+      stdMat("#FFD700", 0.6),
+    );
+    phRoof.position.y = 1.15;
+    phRoof.rotation.y = Math.PI / 4;
+    phGroup.add(phRoof);
+    // Door opening (dark cutout)
+    const phDoor = new THREE.Mesh(
+      new THREE.BoxGeometry(0.35, 0.55, 0.04),
+      stdMat("#3A1A1A", 0.9),
+    );
+    phDoor.position.set(0, 0.30, 0.51);
+    phGroup.add(phDoor);
+    // Window cutout (on side)
+    const phWin = new THREE.Mesh(
+      new THREE.BoxGeometry(0.04, 0.25, 0.25),
+      new THREE.MeshStandardMaterial({
+        color: "#88CCFF", roughness: 0.1, transparent: true, opacity: 0.5,
+      }),
+    );
+    phWin.position.set(0.61, 0.50, 0);
+    phGroup.add(phWin);
+    // Window frame
+    const phWinFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.28, 0.28),
+      stdMat("#FFFFFF", 0.7),
+    );
+    phWinFrame.position.set(0.61, 0.50, 0);
+    phGroup.add(phWinFrame);
+    phGroup.position.set(phX, 0, phZ);
+    phGroup.castShadow = true;
+    this.scene.add(phGroup);
+
+    // ── BBQ Grill (back yard, near house, right-center) ──
+    const grillX = (houseMinX + houseMaxX) / 2 + 1.0;
+    const grillZ = houseMinZ - 2.0;
+    const grillGroup = new THREE.Group();
+    // Grill body
+    const grillBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 0.35, 0.4),
+      stdMat("#2A2A2A", 0.8),
+    );
+    grillBody.position.y = 0.55;
+    grillGroup.add(grillBody);
+    // Grill lid (dome)
+    const grillLid = new THREE.Mesh(
+      new THREE.SphereGeometry(0.32, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+      stdMat("#1A1A1A", 0.7),
+    );
+    grillLid.position.set(0, 0.72, 0);
+    grillGroup.add(grillLid);
+    // Handle on lid
+    const grillHandle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.015, 0.2, 5),
+      stdMat("#888888", 0.3),
+    );
+    grillHandle.rotation.x = Math.PI / 2;
+    grillHandle.position.set(0, 0.78, 0.18);
+    grillGroup.add(grillHandle);
+    // 4 legs
+    for (const [lx, lz] of [[-0.22, -0.14], [0.22, -0.14], [-0.22, 0.14], [0.22, 0.14]]) {
+      const grillLeg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.02, 0.02, 0.38, 5),
+        stdMat("#333333", 0.6),
+      );
+      grillLeg.position.set(lx, 0.19, lz);
+      grillGroup.add(grillLeg);
+    }
+    // Shelf underneath
+    const grillShelf = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.02, 0.3),
+      stdMat("#444444", 0.7),
+    );
+    grillShelf.position.set(0, 0.25, 0);
+    grillGroup.add(grillShelf);
+    grillGroup.position.set(grillX, 0, grillZ);
+    grillGroup.castShadow = true;
+    this.scene.add(grillGroup);
+
+    // ── Patio Table & Chairs (back yard, center) ──
+    const patioX = (houseMinX + houseMaxX) / 2 - 1.0;
+    const patioZ = houseMinZ - 3.5;
+    const patioGroup = new THREE.Group();
+    // Round table
+    const patioPedestal = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.10, 0.45, 6),
+      stdMat("#6A5A4A", 0.7),
+    );
+    patioPedestal.position.y = 0.23;
+    patioGroup.add(patioPedestal);
+    const patioTop = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.5, 0.5, 0.03, 12),
+      stdMat("#8B7355", 0.65),
+    );
+    patioTop.position.y = 0.47;
+    patioGroup.add(patioTop);
+    // 4 chairs around table
+    const chairAngles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+    chairAngles.forEach((angle) => {
+      const dist = 0.75;
+      const cx2 = Math.cos(angle) * dist;
+      const cz2 = Math.sin(angle) * dist;
+      // Chair seat
+      const cSeat = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.02, 0.3),
+        stdMat("#6A5A4A", 0.7),
+      );
+      cSeat.position.set(cx2, 0.30, cz2);
+      patioGroup.add(cSeat);
+      // Chair back
+      const cBack = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.25, 0.02),
+        stdMat("#6A5A4A", 0.7),
+      );
+      cBack.position.set(
+        cx2 + Math.cos(angle) * 0.14,
+        0.43,
+        cz2 + Math.sin(angle) * 0.14,
+      );
+      cBack.rotation.y = -angle + Math.PI / 2;
+      patioGroup.add(cBack);
+      // Chair legs (2 visible)
+      for (const offset of [-0.1, 0.1]) {
+        const cLeg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.012, 0.012, 0.30, 4),
+          stdMat("#5A4A3A", 0.7),
+        );
+        cLeg.position.set(cx2 + Math.cos(angle + Math.PI / 2) * offset, 0.15, cz2 + Math.sin(angle + Math.PI / 2) * offset);
+        patioGroup.add(cLeg);
+      }
+    });
+    patioGroup.position.set(patioX, 0, patioZ);
+    patioGroup.castShadow = true;
+    this.scene.add(patioGroup);
 
     // ── Helper: build a neighbor house ──
     const winGlassMat = new THREE.MeshStandardMaterial({
@@ -1811,6 +2017,237 @@ export class Game {
         );
         knob.position.set(tw * 0.65, 0.42, -0.03);
         doorGroup.add(knob);
+        break;
+      }
+      case "fireplace": {
+        // Brick surround
+        const brickMat = std("#8B4513", 0.85);
+        // Back wall of fireplace
+        add(new THREE.BoxGeometry(tw * 0.95, 0.85, 0.08), brickMat, 0.43);
+        // Left pillar
+        const pillarL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.85, th * 0.6), brickMat);
+        pillarL.position.set(-tw * 0.42, 0.43, th * 0.15);
+        pillarL.castShadow = true; g.add(pillarL);
+        // Right pillar
+        const pillarR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.85, th * 0.6), brickMat);
+        pillarR.position.set(tw * 0.42, 0.43, th * 0.15);
+        pillarR.castShadow = true; g.add(pillarR);
+        // Mantle shelf
+        const mantle = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 1.05, 0.05, th * 0.7),
+          std("#5A3A20", 0.6),
+        );
+        mantle.position.set(0, 0.88, th * 0.1);
+        mantle.castShadow = true; g.add(mantle);
+        // Firebox opening (dark)
+        const firebox = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.55, 0.5, 0.04),
+          new THREE.MeshStandardMaterial({ color: "#1A0A0A", roughness: 0.95 }),
+        );
+        firebox.position.set(0, 0.30, th * 0.22);
+        g.add(firebox);
+        // Glowing embers
+        const emberMat = new THREE.MeshStandardMaterial({
+          color: "#FF4500", emissive: "#FF4500", emissiveIntensity: 0.8,
+          roughness: 0.9,
+        });
+        for (let i = 0; i < 5; i++) {
+          const ember = new THREE.Mesh(new THREE.SphereGeometry(0.03 + Math.random() * 0.02, 5, 5), emberMat);
+          ember.position.set(
+            -0.1 + Math.random() * 0.2,
+            0.08 + Math.random() * 0.04,
+            th * 0.2,
+          );
+          g.add(ember);
+        }
+        // Flame wisps (small orange/yellow triangles)
+        const flameMat = new THREE.MeshStandardMaterial({
+          color: "#FF8C00", emissive: "#FF6600", emissiveIntensity: 0.6,
+          transparent: true, opacity: 0.7,
+        });
+        for (let i = 0; i < 3; i++) {
+          const flame = new THREE.Mesh(
+            new THREE.ConeGeometry(0.03, 0.12 + Math.random() * 0.08, 4),
+            flameMat,
+          );
+          flame.position.set(-0.06 + i * 0.06, 0.18, th * 0.2);
+          g.add(flame);
+        }
+        // Hearth base
+        add(new THREE.BoxGeometry(tw * 1.05, 0.04, th * 0.7), brickMat, 0.02);
+        break;
+      }
+      case "toilet": {
+        const porcelain = std("#F0F0F0", 0.3);
+        // Bowl base
+        const bowl = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.10, 0.25, 8),
+          porcelain,
+        );
+        bowl.position.set(0, 0.13, 0.08);
+        bowl.castShadow = true; g.add(bowl);
+        // Bowl rim (torus)
+        const rim = new THREE.Mesh(
+          new THREE.TorusGeometry(0.11, 0.02, 6, 12),
+          porcelain,
+        );
+        rim.rotation.x = -Math.PI / 2;
+        rim.position.set(0, 0.26, 0.08);
+        g.add(rim);
+        // Seat
+        const seat = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.13, 0.13, 0.02, 12),
+          std("#EEEEEE", 0.4),
+        );
+        seat.position.set(0, 0.27, 0.08);
+        g.add(seat);
+        // Tank
+        const tank = new THREE.Mesh(
+          new THREE.BoxGeometry(0.22, 0.30, 0.12),
+          porcelain,
+        );
+        tank.position.set(0, 0.28, -0.10);
+        tank.castShadow = true; g.add(tank);
+        // Tank lid
+        const tankLid = new THREE.Mesh(
+          new THREE.BoxGeometry(0.24, 0.025, 0.14),
+          std("#E8E8E8", 0.3),
+        );
+        tankLid.position.set(0, 0.44, -0.10);
+        g.add(tankLid);
+        // Flush handle
+        const handle = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.008, 0.008, 0.06, 4),
+          std("#C0C0C0", 0.2, 0.5),
+        );
+        handle.rotation.z = Math.PI / 2;
+        handle.position.set(0.14, 0.40, -0.10);
+        g.add(handle);
+        break;
+      }
+      case "vanity": {
+        // Cabinet base
+        const cabinetMat = std(f.col || "#6A5A4A", 0.7);
+        const cab = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.9, 0.45, th * 0.7),
+          cabinetMat,
+        );
+        cab.position.set(0, 0.23, 0);
+        cab.castShadow = true; g.add(cab);
+        // Cabinet doors (lines)
+        const lineMat = std("#5A4A3A", 0.8);
+        const doorLine = new THREE.Mesh(
+          new THREE.BoxGeometry(0.01, 0.35, th * 0.65),
+          lineMat,
+        );
+        doorLine.position.set(0, 0.22, 0.01);
+        g.add(doorLine);
+        // Drawer knobs
+        for (const kx of [-0.12, 0.12]) {
+          const knobV = new THREE.Mesh(
+            new THREE.SphereGeometry(0.015, 5, 5),
+            std("#C0A060", 0.3, 0.4),
+          );
+          knobV.position.set(kx, 0.22, th * 0.36);
+          g.add(knobV);
+        }
+        // White countertop
+        const counterTop = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.95, 0.04, th * 0.75),
+          std("#F0F0F0", 0.3),
+        );
+        counterTop.position.set(0, 0.47, 0);
+        counterTop.castShadow = true; g.add(counterTop);
+        // Basin (inset oval)
+        const basin = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.10, 0.08, 0.04, 12),
+          std("#E0E8F0", 0.2),
+        );
+        basin.position.set(0, 0.46, 0.05);
+        g.add(basin);
+        // Faucet
+        const faucetBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.015, 0.12, 6),
+          std("#C0C0C0", 0.15, 0.5),
+        );
+        faucetBase.position.set(0, 0.54, -0.06);
+        g.add(faucetBase);
+        const spout = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.01, 0.01, 0.08, 4),
+          std("#C0C0C0", 0.15, 0.5),
+        );
+        spout.rotation.x = Math.PI / 2;
+        spout.position.set(0, 0.60, -0.02);
+        g.add(spout);
+        // Mirror above (wall-mounted)
+        const mirrorFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.6, 0.4, 0.03),
+          std("#4A2820", 0.6),
+        );
+        mirrorFrame.position.set(0, 0.88, -th * 0.3);
+        g.add(mirrorFrame);
+        const mirrorGlass = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.55, 0.36, 0.01),
+          new THREE.MeshStandardMaterial({
+            color: "#C8D8E8", roughness: 0.05, metalness: 0.3,
+          }),
+        );
+        mirrorGlass.position.set(0, 0.88, -th * 0.28);
+        g.add(mirrorGlass);
+        break;
+      }
+      case "roundGlassTable": {
+        // Pedestal base
+        const pedestal = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.08, 0.12, 0.35, 8),
+          std("#888888", 0.3, 0.3),
+        );
+        pedestal.position.set(0, 0.18, 0);
+        pedestal.castShadow = true; g.add(pedestal);
+        // Glass top (transparent circle)
+        const glassTop = new THREE.Mesh(
+          new THREE.CylinderGeometry(tw * 0.42, tw * 0.42, 0.02, 16),
+          new THREE.MeshStandardMaterial({
+            color: "#C8E8F0", roughness: 0.05, metalness: 0.1,
+            transparent: true, opacity: 0.4,
+          }),
+        );
+        glassTop.position.set(0, 0.37, 0);
+        g.add(glassTop);
+        // Small decorative item on top (coaster + glass)
+        const coaster = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.04, 0.04, 0.005, 8),
+          std("#5A3A20", 0.8),
+        );
+        coaster.position.set(0.05, 0.385, 0.03);
+        g.add(coaster);
+        break;
+      }
+      case "diningChair": {
+        const chairMat = std(f.col || "#6B4226", 0.7);
+        // Seat
+        const chairSeat = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.7, 0.03, th * 0.7),
+          chairMat,
+        );
+        chairSeat.position.set(0, 0.28, 0);
+        chairSeat.castShadow = true; g.add(chairSeat);
+        // 4 legs
+        const legH = 0.27;
+        const lGeo = new THREE.CylinderGeometry(0.015, 0.015, legH, 4);
+        for (const [lx, lz] of [[-0.08, -0.08], [0.08, -0.08], [-0.08, 0.08], [0.08, 0.08]]) {
+          const cLeg = new THREE.Mesh(lGeo, chairMat);
+          cLeg.position.set(lx, legH / 2, lz);
+          cLeg.castShadow = true; g.add(cLeg);
+        }
+        // Backrest
+        const backrest = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.65, 0.28, 0.025),
+          chairMat,
+        );
+        backrest.position.set(0, 0.43, -th * 0.32);
+        backrest.rotation.x = 0.05; // slight lean
+        backrest.castShadow = true; g.add(backrest);
         break;
       }
       default: {

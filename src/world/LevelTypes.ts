@@ -29,6 +29,7 @@ export type FurnitureShape =
   | "pictureFrame" | "flowerVase" | "sink" | "oven" | "microwave"
   | "nightstand" | "curtains" | "coatRack" | "sideTableGlass"
   | "kitchenIsland" | "toiletries" | "rugDecor"
+  | "fireplace" | "toilet" | "vanity" | "roundGlassTable" | "diningChair"
   | "window" | "door";
 
 export interface FurnitureDef {

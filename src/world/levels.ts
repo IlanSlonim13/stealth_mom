@@ -65,50 +65,34 @@ export const LEVELS: LevelData[] = [
     ],
     furniture: [
       // ─── Living Room (x=2..27, z=2..33) ───
-      // TV wall — across from couch, close enough to make sense
+      // TV wall
       { x:10, z:10, w:8, h:4, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
-
       // Coffee table between TV and couch
       { x:12, z:14, w:4, h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"         },
-
       // Couch facing TV
       { x:10, z:16, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch"               },
-
       // Side table with wine glass to the left of couch
       { x:6,  z:16, w:4, h:4, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
-
-      // Ottoman to the right of couch (extra seating)
+      // Ottoman to the right of couch
       { x:20, z:16, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
-
-      // Lamp behind the couch on the left
+      // Lamp beside couch
       { x:6,  z:12, w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
-
-      // NORTH WALL — bookcase + pictures
+      // North wall — bookcase + fireplace
       { x:4,  z:2,  w:4, h:4, label:"bookcase",       col:"#8B5A2B", shape:"bookcase"            },
-      { x:16, z:2,  w:4, h:4, label:"pictureFrame1",  col:"#5A8A6A", shape:"pictureFrame"        },
-
-      // LEFT WALL — shelf (decoy)
+      { x:22, z:2,  w:4, h:4, label:"fireplace",      col:"#8B4513", shape:"fireplace"           },
+      // Left wall — shelf (decoy)
       { x:4,  z:8,  w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
-
-      // RIGHT SIDE — flower vase between ottoman and wall
-      { x:24, z:10, w:4, h:4, label:"flowerVase1",    col:"#B0C4DE", shape:"flowerVase"          },
-      { x:24, z:18, w:4, h:4, label:"pictureFrame3",  col:"#8A6A5A", shape:"pictureFrame"        },
-
-      // SOUTH AREA — reading corner + decor
-      { x:4,  z:22, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
-      { x:10, z:24, w:4, h:4, label:"pictureFrame2",  col:"#8A5A4A", shape:"pictureFrame"        },
-      { x:4,  z:28, w:4, h:4, label:"readingLamp",    col:"#D4AF37", shape:"lamp"                },
-      { x:16, z:28, w:4, h:4, label:"plant2",         col:"#4A7A4A", shape:"plant"               },
-
+      // South corner — round glass table + accent plant
+      { x:4,  z:24, w:4, h:4, label:"glassTable",     col:"#888888", shape:"roundGlassTable"     },
+      { x:24, z:28, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
       // Door at interior wall doorway (z=14..17, x=28)
       { x:28, z:14, w:1, h:4, label:"door1",          col:"#8B6F5C", shape:"door"                },
 
       // ─── Hallway (x=29..41) ───
-      { x:32, z:4,  w:4, h:4, label:"hallPlant",      col:"#4A7A4A", shape:"plant"               },
-      { x:32, z:12, w:4, h:4, label:"hallRugDecor",   col:"#8B7060", shape:"rugDecor"            },
+      { x:32, z:4,  w:4, h:4, label:"hallMirror",     col:"#C0D0E0", shape:"mirror"              },
+      { x:38, z:4,  w:4, h:4, label:"hallShoeRack",   col:"#6B4226", shape:"shoeRack"            },
       { x:38, z:12, w:4, h:4, label:"coatRack1",      col:"#5A3A20", shape:"coatRack"            },
       { x:32, z:20, w:4, h:4, label:"table",          col:"#5C3A1E", shape:"table"               },
-      { x:32, z:28, w:4, h:4, label:"hallToys",       col:"#E06040", shape:"toys"                },
       { x:38, z:28, w:4, h:4, label:"hallLamp",       col:"#D4AF37", shape:"lamp"                },
     ],
     // Windows integrated into walls
@@ -219,30 +203,27 @@ export const LEVELS: LevelData[] = [
       { x:12, z:24, w:4, h:4, label:"dresser",      col:"#8B6914", shape:"dresser", hasDecoy:true },
       { x:4, z:14, w:4, h:4, label:"bedroomLamp",  col:"#D4AF37", shape:"lamp"              },
       { x:12, z:16, w:4, h:4, label:"laundry",      col:"#E8D8C0", shape:"laundryBasket"     },
-      { x:4, z:28, w:4, h:4, label:"bedroomRug",   col:"#8B6F5C", shape:"ottoman"           },
-      // Bedroom extras: nightstands, picture
       { x:4, z:12, w:4, h:2, label:"nightstand1",  col:"#8B6914", shape:"nightstand"         },
-      { x:12, z:8, w:4, h:4, label:"bedroomPicture",col:"#7A6A9A", shape:"pictureFrame"      },
-      { x:8, z:20, w:4, h:4, label:"bedroomFlower", col:"#E8A0C0", shape:"flowerVase"        },
+      { x:12, z:4, w:4, h:4, label:"bedroomClock", col:"#C0C0C0", shape:"clock"              },
+      { x:4, z:28, w:4, h:4, label:"bedroomCurt",  col:"#8B6F8C", shape:"curtains"           },
       // Door: bedroom → hallway (x=16, doorway z=14..17)
       { x:16, z:14, w:1, h:4, label:"bedroomDoor", col:"#8B6F5C", shape:"door"               },
+
       // --- Hallway (x=18..31, z=2..33) ---
-      { x:20, z:8, w:4, h:4, label:"plant",        col:"#4A7A4A", shape:"plant"              },
-      { x:20, z:24, w:4, h:4, label:"plant2",       col:"#4A7A4A", shape:"plant"              },
-      { x:28, z:16, w:4, h:4, label:"hallToys",     col:"#E06040", shape:"toys"               },
       { x:20, z:28, w:4, h:4, label:"hallTable",    col:"#5C4A3A", shape:"sideTableGlass"     },
       { x:28, z:4, w:4, h:4, label:"hallClock",     col:"#C0C0C0", shape:"clock"              },
+      { x:24, z:4, w:4, h:4, label:"hallMirror",    col:"#C0D0E0", shape:"mirror"             },
       { x:28, z:28, w:4, h:4, label:"hallCoatRack", col:"#5A3A20", shape:"coatRack"           },
-      { x:24, z:28, w:4, h:4, label:"hallRugDecor",  col:"#7A8B8B", shape:"rugDecor"           },
+      { x:20, z:16, w:4, h:4, label:"hallLamp",     col:"#D4AF37", shape:"lamp"               },
       // Door: hallway → bathroom (x=32, doorway z=18..21)
       { x:32, z:18, w:1, h:4, label:"bathDoor",    col:"#8B6F5C", shape:"door"               },
+
       // --- Bathroom (x=34..45, z=2..33) ---
       { x:36, z:8, w:8, h:4, label:"bathtub",      col:"#E8F0F0", shape:"bathtub"           },
-      { x:36, z:16, w:4, h:4, label:"mirror",       col:"#C0D0E0", shape:"mirror"            },
-      { x:40, z:16, w:4, h:4, label:"bathPlant",    col:"#4A7A4A", shape:"plant"             },
-      { x:36, z:24, w:4, h:4, label:"bathSink",     col:"#D0D0D0", shape:"sink"              },
-      { x:40, z:24, w:4, h:4, label:"toiletries1",  col:"#E8E0D8", shape:"toiletries"        },
-      { x:36, z:28, w:4, h:4, label:"bathLamp",     col:"#D4AF37", shape:"lamp"              },
+      { x:36, z:20, w:4, h:4, label:"bathMirror",   col:"#C0D0E0", shape:"mirror"            },
+      { x:36, z:24, w:8, h:4, label:"bathVanity",   col:"#6A5A4A", shape:"vanity"            },
+      { x:42, z:28, w:4, h:4, label:"toilet",       col:"#F0F0F0", shape:"toilet"            },
+      { x:44, z:16, w:4, h:4, label:"toiletries1",  col:"#E8E0D8", shape:"toiletries"        },
     ],
     // Windows integrated into walls
     windowWalls: [
@@ -353,34 +334,36 @@ export const LEVELS: LevelData[] = [
       // --- Kitchen (x=2..19, z=2..37) ---
       { x:4, z:4, w:12, h:4, label:"counter",     col:"#E8E0D0", shape:"counter", hasDecoy:true },
       { x:16, z:4, w:4, h:8, label:"fridge",      col:"#C8C8C8", shape:"fridge"                 },
-      { x:8, z:12, w:4, h:4, label:"kitchenClock", col:"#C0C0C0", shape:"clock"                 },
-      { x:4, z:32, w:4, h:4, label:"kitchenToys",  col:"#FF6B6B", shape:"toys"                  },
-      // Kitchen extras: oven, sink, microwave, island, windows
       { x:4, z:8, w:4, h:4, label:"oven1",         col:"#333333", shape:"oven"                  },
       { x:8, z:8, w:4, h:4, label:"sink1",          col:"#D0D0D0", shape:"sink"                  },
       { x:12, z:8, w:4, h:4, label:"microwave1",    col:"#888888", shape:"microwave"             },
       { x:4, z:16, w:8, h:4, label:"kitIsland",     col:"#7A6A5A", shape:"kitchenIsland"         },
-      { x:14, z:16, w:4, h:4, label:"kitPlant",     col:"#4A7A4A", shape:"plant"                 },
+      { x:4, z:24, w:4, h:4, label:"kitStool1",     col:"#8B6F5C", shape:"stool"                 },
+      { x:8, z:24, w:4, h:4, label:"kitStool2",     col:"#8B6F5C", shape:"stool"                 },
       { x:12, z:24, w:4, h:4, label:"kitLamp",      col:"#D4AF37", shape:"lamp"                  },
       // Door: kitchen → dining (x=20, doorway z=10..13)
       { x:20, z:10, w:1, h:4, label:"kitDoor",      col:"#8B6F5C", shape:"door"                  },
+
       // --- Dining (x=22..35, z=2..37) ---
       { x:24, z:12, w:8, h:8, label:"table",        col:"#8B6914", shape:"table"                 },
-      { x:24, z:28, w:4, h:4, label:"stool1",       col:"#8B6F5C", shape:"stool"                 },
-      { x:28, z:28, w:4, h:4, label:"stool2",       col:"#8B6F5C", shape:"stool"                 },
-      { x:32, z:12, w:4, h:4, label:"diningPlant",  col:"#4A7A4A", shape:"plant"                 },
-      { x:32, z:28, w:4, h:4, label:"stool3",       col:"#8B6F5C", shape:"stool"                 },
-      // Dining extras: flowers
+      // Chairs around the table
+      { x:22, z:12, w:2, h:4, label:"chairL1",      col:"#6B4226", shape:"diningChair"           },
+      { x:22, z:16, w:2, h:4, label:"chairL2",      col:"#6B4226", shape:"diningChair"           },
+      { x:32, z:12, w:2, h:4, label:"chairR1",      col:"#6B4226", shape:"diningChair"           },
+      { x:32, z:16, w:2, h:4, label:"chairR2",      col:"#6B4226", shape:"diningChair"           },
+      { x:26, z:8, w:4, h:2, label:"chairT",        col:"#6B4226", shape:"diningChair"           },
+      { x:26, z:20, w:4, h:2, label:"chairB",       col:"#6B4226", shape:"diningChair"           },
       { x:32, z:4, w:4, h:4, label:"diningFlower",  col:"#AA4466", shape:"flowerVase"            },
-      { x:24, z:32, w:4, h:4, label:"diningLamp",   col:"#D4AF37", shape:"lamp"                  },
-      { x:32, z:32, w:4, h:4, label:"diningRug",    col:"#A0B0A0", shape:"rugDecor"              },
+      { x:24, z:28, w:4, h:4, label:"diningLamp",   col:"#D4AF37", shape:"lamp"                  },
+      { x:32, z:28, w:4, h:4, label:"chinaShelf",   col:"#8B5A2B", shape:"shelf"                 },
       // Door: dining → pantry (x=36, doorway z=10..13)
       { x:36, z:10, w:1, h:4, label:"pantryDoor",   col:"#8B6F5C", shape:"door"                  },
+
       // --- Pantry (x=38..45, z=2..37) ---
-      { x:40, z:16, w:4, h:4, label:"pantryShelf",  col:"#8B5A2B", shape:"shelf"                 },
-      { x:40, z:28, w:4, h:4, label:"pantryLamp",   col:"#D4AF37", shape:"lamp"                  },
-      { x:40, z:4, w:4, h:4, label:"pantryShelf2",  col:"#8B5A2B", shape:"shelf"                 },
-      { x:40, z:24, w:4, h:4, label:"pantryPlant",  col:"#4A7A4A", shape:"plant"                 },
+      { x:40, z:4, w:4, h:4, label:"pantryShelf1",  col:"#8B5A2B", shape:"shelf"                 },
+      { x:40, z:16, w:4, h:4, label:"pantryShelf2",  col:"#8B5A2B", shape:"shelf"                },
+      { x:40, z:28, w:4, h:4, label:"pantryShelf3",  col:"#8B5A2B", shape:"shelf"                },
+      { x:44, z:12, w:4, h:4, label:"pantryShelf4",  col:"#8B5A2B", shape:"shelf"                },
     ],
     // Windows integrated into walls
     windowWalls: [
@@ -488,32 +471,33 @@ export const LEVELS: LevelData[] = [
     ],
     furniture: [
       // --- Hallway (x=2..11, z=2..37) ---
-      { x:4, z:12, w:4, h:4, label:"lamp",        col:"#D4AF37", shape:"lamp"                  },
-      { x:4, z:28, w:4, h:4, label:"hallOttoman", col:"#8B6F5C", shape:"ottoman"               },
-      { x:4, z:4, w:4, h:4, label:"hallMirror",  col:"#C0D0E0", shape:"mirror"                },
-      { x:8, z:4, w:4, h:4, label:"hallCoatRack", col:"#5A3A20", shape:"coatRack"              },
-      { x:8, z:12, w:4, h:4, label:"hallPlant",   col:"#4A7A4A", shape:"plant"                 },
-      { x:8, z:28, w:4, h:4, label:"hallRugDecor", col:"#E8A0A0", shape:"rugDecor"             },
+      { x:4, z:4,  w:4, h:4, label:"hallMirror",   col:"#C0D0E0", shape:"mirror"                },
+      { x:8, z:4,  w:4, h:4, label:"hallCoatRack",  col:"#5A3A20", shape:"coatRack"              },
+      { x:4, z:12, w:4, h:4, label:"lamp",          col:"#D4AF37", shape:"lamp"                  },
+      { x:4, z:20, w:4, h:4, label:"hallTable",     col:"#5C3A1E", shape:"table"                 },
+      { x:4, z:28, w:4, h:4, label:"hallShoeRack",  col:"#6B4226", shape:"shoeRack"              },
       // Door: hallway → playroom (x=12, doorway z=18..21)
-      { x:12, z:18, w:1, h:4, label:"playDoor",   col:"#8B6F5C", shape:"door"                  },
+      { x:12, z:18, w:1, h:4, label:"playDoor",     col:"#8B6F5C", shape:"door"                  },
+
       // --- Playroom (x=14..35, z=2..37) ---
-      { x:16, z:8, w:4, h:4, label:"toybox",      col:"#E06040", shape:"toybox",  hasDecoy:true },
-      { x:28, z:32, w:4, h:4, label:"playToys2",   col:"#E8A040", shape:"toys"                  },
-      { x:16, z:32, w:4, h:4, label:"playLaundry", col:"#E8D8C0", shape:"laundryBasket"         },
-      // Playroom extras
-      { x:16, z:4, w:4, h:4, label:"playClock",    col:"#C0C0C0", shape:"clock"                 },
-      { x:28, z:4, w:4, h:4, label:"playShelf",    col:"#C06040", shape:"shelf"                 },
-      { x:16, z:28, w:4, h:4, label:"playPlant",   col:"#4A7A4A", shape:"plant"                 },
-      { x:32, z:28, w:4, h:4, label:"playLamp",    col:"#D4AF37", shape:"lamp"                  },
-      { x:32, z:32, w:4, h:4, label:"playFlower",  col:"#FF6B8A", shape:"flowerVase"            },
+      { x:16, z:8,  w:4, h:4, label:"toybox",       col:"#E06040", shape:"toybox",  hasDecoy:true },
+      { x:24, z:8,  w:4, h:4, label:"playToys3",    col:"#44BB66", shape:"toys"                  },
+      { x:16, z:4,  w:4, h:4, label:"playBooks",    col:"#C06040", shape:"bookcase"              },
+      { x:28, z:4,  w:4, h:4, label:"playShelf",    col:"#C06040", shape:"shelf"                 },
+      { x:24, z:16, w:4, h:4, label:"playTable",    col:"#E8B060", shape:"coffeeTable"           },
+      { x:20, z:32, w:4, h:4, label:"playToybox2",  col:"#4488FF", shape:"toybox"                },
+      { x:28, z:32, w:4, h:4, label:"playToys2",    col:"#E8A040", shape:"toys"                  },
+      { x:16, z:32, w:4, h:4, label:"playLaundry",  col:"#E8D8C0", shape:"laundryBasket"         },
+      { x:32, z:28, w:4, h:4, label:"playLamp",     col:"#D4AF37", shape:"lamp"                  },
       // Door: playroom → study (x=36, doorway z=18..21)
-      { x:36, z:18, w:1, h:4, label:"studyDoor",  col:"#8B6F5C", shape:"door"                  },
+      { x:36, z:18, w:1, h:4, label:"studyDoor",    col:"#8B6F5C", shape:"door"                  },
+
       // --- Study (x=38..45, z=2..37) ---
-      { x:40, z:8, w:8, h:4, label:"bookcase",    col:"#8B5A2B", shape:"bookcase"              },
-      { x:40, z:16, w:4, h:4, label:"desk",        col:"#8B6914", shape:"desk"                  },
-      { x:40, z:24, w:4, h:4, label:"studyPlant",  col:"#4A7A4A", shape:"plant"                 },
-      { x:40, z:28, w:4, h:4, label:"studyLamp",   col:"#D4AF37", shape:"lamp"                  },
-      { x:44, z:28, w:4, h:4, label:"studyShelf",  col:"#8B5A2B", shape:"shelf"                 },
+      { x:40, z:8,  w:8, h:4, label:"bookcase",     col:"#8B5A2B", shape:"bookcase"              },
+      { x:40, z:16, w:4, h:4, label:"desk",          col:"#8B6914", shape:"desk"                  },
+      { x:44, z:16, w:4, h:4, label:"deskChair",    col:"#6B4226", shape:"diningChair"           },
+      { x:40, z:28, w:4, h:4, label:"studyLamp",    col:"#D4AF37", shape:"lamp"                  },
+      { x:44, z:28, w:4, h:4, label:"studyShelf",   col:"#8B5A2B", shape:"shelf"                 },
     ],
     // Windows integrated into walls
     windowWalls: [
@@ -639,42 +623,36 @@ export const LEVELS: LevelData[] = [
       // --- Kitchen (x=2..19, z=2..45) ---
       { x:4, z:8, w:8, h:4, label:"counter",      col:"#E8E0D0", shape:"counter", hasDecoy:true  },
       { x:4, z:12, w:4, h:8, label:"fridge",       col:"#C8C8C8", shape:"fridge"                  },
-      { x:12, z:32, w:4, h:4, label:"laundry",      col:"#E8D8C0", shape:"laundryBasket"           },
-      // Kitchen extras: oven, sink, island, microwave, windows
       { x:12, z:8, w:4, h:4, label:"oven1",         col:"#333333", shape:"oven"                    },
       { x:12, z:12, w:4, h:4, label:"sink1",         col:"#D0D0D0", shape:"sink"                    },
       { x:4, z:4, w:4, h:4, label:"microwave1",    col:"#888888", shape:"microwave"                },
       { x:4, z:24, w:8, h:4, label:"kitIsland",     col:"#7A6A5A", shape:"kitchenIsland"            },
-      { x:16, z:8, w:4, h:4, label:"kitPlant",      col:"#4A7A4A", shape:"plant"                    },
+      { x:4, z:32, w:4, h:4, label:"kitStool1",     col:"#8B6F5C", shape:"stool"                    },
+      { x:8, z:32, w:4, h:4, label:"kitStool2",     col:"#8B6F5C", shape:"stool"                    },
+      { x:16, z:4, w:4, h:4, label:"kitClock",      col:"#C0C0C0", shape:"clock"                    },
       { x:12, z:36, w:4, h:4, label:"kitLamp",      col:"#D4AF37", shape:"lamp"                     },
-      { x:16, z:32, w:4, h:4, label:"kitRugDecor",  col:"#706050", shape:"rugDecor"                 },
-      { x:16, z:24, w:4, h:4, label:"kitStool",     col:"#8B6F5C", shape:"stool"                    },
       // Door: kitchen → living room (x=20, doorway z=22..25)
       { x:20, z:22, w:1, h:4, label:"kitDoor",      col:"#8B6F5C", shape:"door"                     },
+
       // --- Living Room (x=22..43, z=2..45) ---
-      { x:24, z:12, w:8, h:4, label:"couch",        col:"#8B6F5C", shape:"couch"                   },
       { x:24, z:4, w:8, h:4, label:"tv",           col:"#2A2A3A", shape:"tvUnit"                  },
-      { x:24, z:36, w:8, h:4, label:"table",        col:"#5C3A1E", shape:"table",   hasDecoy:true   },
-      { x:36, z:32, w:4, h:4, label:"plant",        col:"#4A7A4A", shape:"plant"                    },
+      { x:24, z:12, w:8, h:4, label:"couch",        col:"#8B6F5C", shape:"couch"                   },
       { x:28, z:16, w:4, h:4, label:"coffeeTable",  col:"#5C3A1E", shape:"coffeeTable"             },
       { x:24, z:28, w:4, h:4, label:"ottoman",      col:"#8B6F5C", shape:"ottoman"                 },
+      { x:24, z:36, w:8, h:4, label:"table",        col:"#5C3A1E", shape:"table",   hasDecoy:true   },
+      { x:36, z:4, w:4, h:4, label:"fireplace",     col:"#8B4513", shape:"fireplace"               },
+      { x:40, z:28, w:4, h:4, label:"glassTable",   col:"#888888", shape:"roundGlassTable"         },
+      { x:36, z:32, w:4, h:4, label:"plant",        col:"#4A7A4A", shape:"plant"                    },
       { x:40, z:16, w:4, h:4, label:"livingLamp",   col:"#D4AF37", shape:"lamp"                    },
-      { x:36, z:40, w:4, h:4, label:"livingPlant2", col:"#4A7A4A", shape:"plant"                   },
-      // Living room extras: flowers, shelves
-      { x:36, z:4, w:4, h:4, label:"livingFlower",  col:"#AA4466", shape:"flowerVase"              },
-      { x:24, z:16, w:4, h:4, label:"livingSideT",  col:"#5C3A1E", shape:"sideTableGlass"          },
       { x:40, z:36, w:4, h:4, label:"livingBookcase",col:"#504030", shape:"bookcase"               },
-      { x:32, z:36, w:4, h:4, label:"livingLamp2",  col:"#D4AF37", shape:"lamp"                    },
-      { x:32, z:28, w:4, h:4, label:"livingRugDecor",col:"#706050", shape:"rugDecor"               },
-      { x:36, z:16, w:4, h:4, label:"livingDresser", col:"#504030", shape:"dresser"                },
       // Door: living room → entry (x=44, doorway z=22..25)
       { x:44, z:22, w:1, h:4, label:"entryDoor",    col:"#8B6F5C", shape:"door"                    },
+
       // --- Entry (x=46..53, z=2..45) ---
       { x:48, z:36, w:4, h:4, label:"shoeRack",     col:"#6B4226", shape:"shoeRack"               },
-      { x:48, z:28, w:4, h:4, label:"entryToys",    col:"#E06040", shape:"toys"                    },
       { x:48, z:16, w:4, h:4, label:"entryMirror",  col:"#C0D0E0", shape:"mirror"                  },
       { x:48, z:4, w:4, h:4, label:"entryCoatRack", col:"#5A3A20", shape:"coatRack"                },
-      { x:48, z:40, w:4, h:4, label:"entryPlant",   col:"#4A7A4A", shape:"plant"                   },
+      { x:48, z:40, w:4, h:4, label:"entryLamp",    col:"#D4AF37", shape:"lamp"                    },
     ],
     // Windows integrated into walls
     windowWalls: [
