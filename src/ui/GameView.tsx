@@ -265,7 +265,7 @@ export function GameView() {
                 padding: "16px 24px",
                 maxWidth: 280,
                 textAlign: "center",
-                animation: "tutorialFade 0.8s ease-in-out",
+                animation: "tutorialFade 2.4s ease-in-out",
               }}>
                 <p style={{ fontSize: 28, margin: "0 0 8px" }}>
                   {LEVEL1_TUTORIAL[tutorialStep].emoji}
