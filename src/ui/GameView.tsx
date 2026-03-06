@@ -263,7 +263,7 @@ export function GameView() {
                   if (next >= LEVEL1_TUTORIAL.length) {
                     gameRef.current?.setIntroPaused(false);
                   }
-                }, 2400 + 750);
+                }, 1800 + 750);
               }}
               style={{
                 position: "absolute", bottom: "12%", left: "50%",
@@ -278,8 +278,8 @@ export function GameView() {
                 maxWidth: 280,
                 textAlign: "center",
                 animation: tutorialFading
-                  ? "tutorialFadeOut 2.4s ease-in-out forwards"
-                  : "tutorialFadeIn 2.4s ease-in-out",
+                  ? "tutorialFadeOut 1.8s ease-in-out forwards"
+                  : "tutorialFadeIn 1.8s ease-in-out",
               }}>
                 <p style={{ fontSize: 28, margin: "0 0 8px" }}>
                   {LEVEL1_TUTORIAL[tutorialStep].emoji}
