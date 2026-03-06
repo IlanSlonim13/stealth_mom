@@ -3343,32 +3343,30 @@ export class Game {
       this.relaxSitT = Math.min(this.relaxSitT + dt * 1.2, 1);
       const t = easeOutQuad(this.relaxSitT);
 
-      // Move Mom onto the couch seat (slightly back and lower)
+      // Lower Mom onto the couch seat
       if (this.momOrigPos) {
-        // Shift Mom slightly north (toward couch back) and lower for sitting
         this.mom.position.y = lerp(this.momOrigPos.y, this.momOrigPos.y - 0.12, t);
-        this.mom.position.z = lerp(this.momOrigPos.z, this.momOrigPos.z + TILE_SIZE * 0.3, t);
       }
 
-      // Rotate legs forward (feet up on coffee table direction)
+      // Legs extend forward toward coffee table (feet up)
       if (this.momLeftLeg) this.momLeftLeg.rotation.x = lerp(0, -1.3, t);
       if (this.momRightLeg) this.momRightLeg.rotation.x = lerp(0, -1.3, t);
 
-      // Move legs down to seat level
-      if (this.momLeftLeg) this.momLeftLeg.position.y = lerp(0.15, 0.25, t);
-      if (this.momRightLeg) this.momRightLeg.position.y = lerp(0.15, 0.25, t);
+      // Raise legs to seat level
+      if (this.momLeftLeg) this.momLeftLeg.position.y = lerp(0.15, 0.22, t);
+      if (this.momRightLeg) this.momRightLeg.position.y = lerp(0.15, 0.22, t);
 
-      // Lean torso back slightly
-      this.mom.rotation.x = lerp(0, 0.15, t);
+      // Lean torso back against couch back (inverted due to rotation.y = π)
+      this.mom.rotation.x = lerp(0, -0.15, t);
 
-      // Arms resting on couch arms (slightly outward)
-      if (this.momLeftArm) this.momLeftArm.rotation.z = lerp(0, 0.3, t);
-      if (this.momRightArm) this.momRightArm.rotation.z = lerp(0, -0.3, t);
-      if (this.momLeftArm) this.momLeftArm.rotation.x = lerp(0, 0.2, t);
-      if (this.momRightArm) this.momRightArm.rotation.x = lerp(0, 0.2, t);
+      // Arms drape over armrests (wider spread, angled down)
+      if (this.momLeftArm) this.momLeftArm.rotation.z = lerp(0, 0.6, t);
+      if (this.momRightArm) this.momRightArm.rotation.z = lerp(0, -0.6, t);
+      if (this.momLeftArm) this.momLeftArm.rotation.x = lerp(0, 0.4, t);
+      if (this.momRightArm) this.momRightArm.rotation.x = lerp(0, 0.4, t);
 
-      // Head tilts back slightly, relaxed
-      if (this.momHead) this.momHead.rotation.x = lerp(0, -0.1, t);
+      // Head tilts slightly forward to look at TV
+      if (this.momHead) this.momHead.rotation.x = lerp(0, 0.15, t);
     }
 
     // ── Idle seated breathing ──
@@ -3573,11 +3571,12 @@ export class Game {
   enterRelaxScene() {
     this.relaxSceneActive = true;
 
-    // Move Mom onto the couch before starting the sitting animation
+    // Move Mom onto the couch, facing the TV
     const couchGroup = this.furnitureGroups.find(g => g.userData.label === "couch");
     if (couchGroup) {
       this.mom.position.x = couchGroup.position.x;
-      this.mom.position.z = couchGroup.position.z;
+      // Scoot back against the couch back (+Z side)
+      this.mom.position.z = couchGroup.position.z + TILE_SIZE * 0.3;
       // Update logical position to match
       const couchFurn = this.level.furniture.find(f => f.label === "couch");
       if (couchFurn) {
@@ -3585,6 +3584,8 @@ export class Game {
         this.momPos.z = couchFurn.z + couchFurn.h / 2 - 0.5;
       }
     }
+    // Face the TV (negative Z direction)
+    this.mom.rotation.y = Math.PI;
 
     this.relaxSitting = true;
     this.momOrigPos = this.mom.position.clone();
