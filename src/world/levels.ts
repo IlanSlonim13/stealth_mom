@@ -64,26 +64,29 @@ export const LEVELS: LevelData[] = [
       [28,14],[28,15],[28,16],[28,17],
       [28,18],[28,19],[28,20],[28,21],[28,22],[28,23],[28,24],
       [28,25],[28,26],[28,27],[28,28],[28,29],[28,30],[28,31],[28,32],[28,33],
-      // Horizontal wall at z=18 from x=2..27, doorway at x=14..15
-      [2,18],[3,18],[4,18],[5,18],[6,18],[7,18],[8,18],[9,18],[10,18],[11,18],[12,18],[13,18],
+      // Horizontal wall at z=18 from x=2..27, doorways at x=4..5 and x=14..15
+      [2,18],[3,18],
+      [6,18],[7,18],[8,18],[9,18],[10,18],[11,18],[12,18],[13,18],
       [16,18],[17,18],[18,18],[19,18],[20,18],[21,18],[22,18],[23,18],[24,18],[25,18],[26,18],[27,18],
     ],
     furniture: [
       // ─── Dining Room (x=2..27, z=2..17) ───
-      // Large dining table — center of dining room
-      { x:8,  z:6,  w:12, h:8, label:"diningTable",   col:"#6B3A1E", shape:"diningTable"         },
+      // Dining table — center of dining room (narrower for passage)
+      { x:8,  z:7,  w:12, h:6, label:"diningTable",   col:"#6B3A1E", shape:"diningTable"         },
       // 8 Chairs around the table
-      { x:6,  z:6,  w:2, h:4, label:"chairL1",        col:"#6B4226", shape:"diningChair"         },
-      { x:6,  z:10, w:2, h:4, label:"chairL2",        col:"#6B4226", shape:"diningChair"         },
-      { x:20, z:6,  w:2, h:4, label:"chairR1",        col:"#6B4226", shape:"diningChair"         },
-      { x:20, z:10, w:2, h:4, label:"chairR2",        col:"#6B4226", shape:"diningChair"         },
-      { x:10, z:4,  w:4, h:2, label:"chairT1",        col:"#6B4226", shape:"diningChair"         },
-      { x:14, z:4,  w:4, h:2, label:"chairT2",        col:"#6B4226", shape:"diningChair"         },
-      { x:10, z:14, w:4, h:2, label:"chairB1",        col:"#6B4226", shape:"diningChair"         },
-      { x:14, z:14, w:4, h:2, label:"chairB2",        col:"#6B4226", shape:"diningChair"         },
+      { x:6,  z:7,  w:2, h:3, label:"chairL1",        col:"#6B4226", shape:"diningChair"         },
+      { x:6,  z:10, w:2, h:3, label:"chairL2",        col:"#6B4226", shape:"diningChair"         },
+      { x:20, z:7,  w:2, h:3, label:"chairR1",        col:"#6B4226", shape:"diningChair"         },
+      { x:20, z:10, w:2, h:3, label:"chairR2",        col:"#6B4226", shape:"diningChair"         },
+      { x:10, z:5,  w:4, h:2, label:"chairT1",        col:"#6B4226", shape:"diningChair"         },
+      { x:14, z:5,  w:4, h:2, label:"chairT2",        col:"#6B4226", shape:"diningChair"         },
+      { x:10, z:13, w:4, h:2, label:"chairB1",        col:"#6B4226", shape:"diningChair"         },
+      { x:14, z:13, w:4, h:2, label:"chairB2",        col:"#6B4226", shape:"diningChair"         },
       // Credenza — against north wall
       { x:22, z:2,  w:6, h:2, label:"credenza",       col:"#5C3A1E", shape:"credenza"            },
-      // Door at z=18 wall doorway (x=14..15)
+      // Door at z=18 wall — west doorway (x=4..5)
+      { x:4,  z:18, w:2, h:1, label:"diningDoorW",    col:"#8B6F5C", shape:"door"                },
+      // Door at z=18 wall — east doorway (x=14..15)
       { x:14, z:18, w:2, h:1, label:"diningDoor",     col:"#8B6F5C", shape:"door"                },
 
       // ─── Living Room (x=2..27, z=19..33) ───
