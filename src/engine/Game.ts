@@ -2130,6 +2130,30 @@ export class Game {
         );
         knob.position.set(-dw * 0.72, 0.42, 0.03);
         doorGroup.add(knob);
+        // Transom wall above door — fill gap between door top and ceiling (wall height 1.5)
+        const transomH = 1.5 - 0.93; // wall top minus door crown top
+        const transomMat = new THREE.MeshStandardMaterial({
+          color: _palette.wall, roughness: 0.85,
+          transparent: true, opacity: 0.45, depthWrite: false,
+        });
+        const transom = new THREE.Mesh(
+          new THREE.BoxGeometry(dw * 1.02, transomH, 0.06),
+          transomMat,
+        );
+        transom.position.set(0, 0.93 + transomH / 2, 0);
+        transom.renderOrder = 1;
+        doorRoot.add(transom);
+        // Crown molding at ceiling level above transom
+        const transomCrown = new THREE.Mesh(
+          new THREE.BoxGeometry(dw * 1.04, 0.04, 0.08),
+          new THREE.MeshStandardMaterial({
+            color: _palette.baseboard, roughness: 0.9,
+            transparent: true, opacity: 0.5, depthWrite: false,
+          }),
+        );
+        transomCrown.position.set(0, 1.48, 0);
+        transomCrown.renderOrder = 1;
+        doorRoot.add(transomCrown);
         g.add(doorRoot);
         break;
       }
