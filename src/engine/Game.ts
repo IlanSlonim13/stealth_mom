@@ -2083,50 +2083,54 @@ export class Game {
         break;
       }
       case "door": {
-        // Door with crown molding trim around the frame
+        // Door spanning the doorway — use the longer dimension as visual width
+        const dw = Math.max(tw, th);
         const doorTrimMat = std("#D0C4B0", 0.7);
         const doorPanelMat = std("#8B6F5C", 0.75);
-        // Crown molding header — decorative top trim
+        // Rotate entire door group so it spans along z (the doorway axis)
+        const doorRoot = new THREE.Group();
+        if (th > tw) doorRoot.rotation.y = Math.PI / 2;
+        // Crown molding header
         const crownHeader = new THREE.Mesh(
-          new THREE.BoxGeometry(tw * 1.0, 0.06, 0.12),
+          new THREE.BoxGeometry(dw * 1.0, 0.06, 0.12),
           doorTrimMat,
         );
         crownHeader.position.set(0, 0.90, 0);
-        g.add(crownHeader);
-        // Thin trim strip below crown
+        doorRoot.add(crownHeader);
+        // Trim strip below crown
         const trimStrip = new THREE.Mesh(
-          new THREE.BoxGeometry(tw * 0.96, 0.03, 0.10),
+          new THREE.BoxGeometry(dw * 0.96, 0.03, 0.10),
           doorTrimMat,
         );
         trimStrip.position.set(0, 0.86, 0);
-        g.add(trimStrip);
-        // Side trim (left and right vertical casing)
+        doorRoot.add(trimStrip);
+        // Side trim (vertical casing)
         const sideTrimGeo = new THREE.BoxGeometry(0.035, 0.86, 0.09);
         const leftTrim = new THREE.Mesh(sideTrimGeo, doorTrimMat);
-        leftTrim.position.set(-tw * 0.47, 0.43, 0);
-        g.add(leftTrim);
+        leftTrim.position.set(-dw * 0.47, 0.43, 0);
+        doorRoot.add(leftTrim);
         const rightTrim = new THREE.Mesh(sideTrimGeo, doorTrimMat);
-        rightTrim.position.set(tw * 0.47, 0.43, 0);
-        g.add(rightTrim);
+        rightTrim.position.set(dw * 0.47, 0.43, 0);
+        doorRoot.add(rightTrim);
         // Door panel (slightly ajar)
         const doorPanel = new THREE.Mesh(
-          new THREE.BoxGeometry(tw * 0.88, 0.82, 0.035),
+          new THREE.BoxGeometry(dw * 0.88, 0.82, 0.035),
           doorPanelMat,
         );
-        // Pivot from right edge so the panel swings away cleanly
         const doorGroup = new THREE.Group();
-        doorPanel.position.x = -tw * 0.44;
+        doorPanel.position.x = -dw * 0.44;
         doorGroup.add(doorPanel);
-        doorGroup.position.set(tw * 0.44, 0.42, 0);
-        doorGroup.rotation.y = 0.45; // slightly open outward
-        g.add(doorGroup);
+        doorGroup.position.set(dw * 0.44, 0.42, 0);
+        doorGroup.rotation.y = 0.45; // slightly open
+        doorRoot.add(doorGroup);
         // Door knob
         const knob = new THREE.Mesh(
           new THREE.SphereGeometry(0.025, 6, 6),
           std("#C0A040", 0.3, 0.4),
         );
-        knob.position.set(-tw * 0.72, 0.42, 0.03);
+        knob.position.set(-dw * 0.72, 0.42, 0.03);
         doorGroup.add(knob);
+        g.add(doorRoot);
         break;
       }
       case "fireplace": {
