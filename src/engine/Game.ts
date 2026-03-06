@@ -2485,15 +2485,6 @@ export class Game {
         cap.scale.y = 0.6;
         cap.position.set(0, 0.07, 0.0);
         head.add(cap);
-        // Side hair framing the face
-        const sideL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 5, 5), hairMat);
-        sideL.scale.set(0.7, 1.2, 0.9);
-        sideL.position.set(-0.1, -0.02, 0.04);
-        head.add(sideL);
-        const sideR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 5, 5), hairMat);
-        sideR.scale.set(0.7, 1.2, 0.9);
-        sideR.position.set(0.1, -0.02, 0.04);
-        head.add(sideR);
         // Tie point at back of head
         const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), hairMat);
         bun.position.set(0, -0.02, -0.12);
