@@ -1064,6 +1064,9 @@ export class Game {
       color: wallColor, roughness: 0.85, transparent: true, opacity: 0.3, depthWrite: false,
     });
     const baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.9 });
+    const baseMatTransparent = new THREE.MeshStandardMaterial({
+      color: baseColor, roughness: 0.9, transparent: true, opacity: 0.55, depthWrite: false,
+    });
 
     // Split dimensions: wall total height = 1.5
     const bottomH = 0.5;
@@ -1330,6 +1333,26 @@ export class Game {
           panelTop.rotation.y = rotY;
           panelTop.renderOrder = 1;
           this.scene.add(panelTop);
+
+          // Baseboard
+          const baseT = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, 0.06, 0.07),
+            baseMatTransparent,
+          );
+          baseT.position.set(wx3 + ox, TILE_H + 0.03, wz3 + oz);
+          baseT.rotation.y = rotY;
+          baseT.renderOrder = 1;
+          this.scene.add(baseT);
+
+          // Crown molding
+          const crownT = new THREE.Mesh(
+            new THREE.BoxGeometry(0.94 * TS, 0.04, 0.08),
+            baseMatTransparent,
+          );
+          crownT.position.set(wx3 + ox, TILE_H + 1.48, wz3 + oz);
+          crownT.rotation.y = rotY;
+          crownT.renderOrder = 1;
+          this.scene.add(crownT);
 
           // Picture frames on transparent walls too
           artCounter++;
@@ -2062,15 +2085,7 @@ export class Game {
       case "door": {
         // Door frame with partially open door
         const doorFrameMat = std("#E8E0D0", 0.7);
-        // Frame: two vertical posts + top header
-        const postGeo = new THREE.BoxGeometry(0.04, 0.85, 0.08);
-        const leftPost = new THREE.Mesh(postGeo, doorFrameMat);
-        leftPost.position.set(-tw * 0.42, 0.43, 0);
-        g.add(leftPost);
-        const rightPost = new THREE.Mesh(postGeo, doorFrameMat);
-        rightPost.position.set(tw * 0.42, 0.43, 0);
-        g.add(rightPost);
-        // Header
+        // Header across top of doorway
         add(new THREE.BoxGeometry(tw * 0.9, 0.05, 0.08), doorFrameMat, 0.88);
         // Door panel (slightly ajar — rotated 25 degrees)
         const doorPanel = new THREE.Mesh(

@@ -56,10 +56,11 @@ export const LEVELS: LevelData[] = [
       [16,35],[17,35],[18,35],[19,35],[20,35],[21,35],[22,35],[23,35],[24,35],[25,35],[26,35],[27,35],[28,35],[29,35],[30,35],[31,35],
       [32,35],[33,35],[34,35],[35,35],[36,35],[37,35],[38,35],[39,35],[40,35],[41,35],[42,35],[43,35],
     ],
-    // Interior wall at x=28 — single width, doorway at z=14..17
+    // Interior wall at x=28 — single width, doorway at z=4..7
     interiorWalls: [
-      [28,2],[28,3],[28,4],[28,5],[28,6],[28,7],[28,8],[28,9],
-      [28,10],[28,11],[28,12],[28,13],
+      [28,2],[28,3],
+      [28,8],[28,9],[28,10],[28,11],[28,12],[28,13],
+      [28,14],[28,15],[28,16],[28,17],
       [28,18],[28,19],[28,20],[28,21],[28,22],[28,23],[28,24],
       [28,25],[28,26],[28,27],[28,28],[28,29],[28,30],[28,31],[28,32],[28,33],
     ],
@@ -87,8 +88,8 @@ export const LEVELS: LevelData[] = [
       { x:18, z:10, w:4, h:4, label:"glassTable",     col:"#888888", shape:"roundGlassTable"     },
       // Plant — south-east corner of living room
       { x:24, z:30, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
-      // Door at interior wall doorway (z=14..17, x=28)
-      { x:28, z:14, w:1, h:4, label:"door1",          col:"#8B6F5C", shape:"door"                },
+      // Door at interior wall doorway (z=4..7, x=28)
+      { x:28, z:4, w:1, h:4, label:"door1",          col:"#8B6F5C", shape:"door"                },
 
       // ─── Hallway (x=29..41) ───
       { x:32, z:4,  w:4, h:4, label:"hallMirror",     col:"#C0D0E0", shape:"mirror"              },
