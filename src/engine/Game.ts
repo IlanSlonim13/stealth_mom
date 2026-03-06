@@ -1421,6 +1421,8 @@ export class Game {
 
       this.buildFurnitureShape(g, f, palette);
 
+      if (f.rot) g.rotation.y = f.rot;
+
       if (f.hasDecoy) {
         const glowGeo = new THREE.SphereGeometry(0.07, 8, 8);
         const glowMat = new THREE.MeshStandardMaterial({
@@ -1677,25 +1679,26 @@ export class Game {
         break;
       }
       case "tvUnit": {
-        // Dresser body
-        add(new THREE.BoxGeometry(tw, 0.35, th), std(f.col, 0.7), 0.18);
+        // Dresser body (thin depth)
+        const dDepth = Math.min(th, 0.3);
+        add(new THREE.BoxGeometry(tw, 0.35, dDepth), std(f.col, 0.7), 0.18);
         // Top surface
-        add(new THREE.BoxGeometry(tw + 0.04, 0.04, th + 0.04), std("#D0C8B8", 0.4), 0.37);
-        // TV screen sitting on top, facing south (into room)
-        const tvBody = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.8, 0.28, 0.06), std("#111", 0.3, 0.3));
-        tvBody.position.set(0, 0.56, 0);
+        add(new THREE.BoxGeometry(tw + 0.04, 0.04, dDepth + 0.04), std("#D0C8B8", 0.4), 0.37);
+        // TV screen sitting on top — tall like a real TV (3× height)
+        const tvBody = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.8, 0.84, 0.06), std("#111", 0.3, 0.3));
+        tvBody.position.set(0, 0.84, 0);
         tvBody.castShadow = true;
         g.add(tvBody);
         // Emissive screen face
         const scFace = new THREE.Mesh(
-          new THREE.BoxGeometry(tw * 0.7, 0.2, 0.01),
+          new THREE.BoxGeometry(tw * 0.7, 0.72, 0.01),
           new THREE.MeshStandardMaterial({ color: "#0A0A2A", emissive: "#050510", emissiveIntensity: 0.5 }),
         );
-        scFace.position.set(0, 0.56, 0.035);
+        scFace.position.set(0, 0.84, 0.035);
         g.add(scFace);
         // Drawer lines
-        for (let i = 0; i < 3; i++) {
-          add(new THREE.BoxGeometry(tw + 0.01, 0.01, th + 0.01), std("#5A3A10", 0.8), 0.08 + i * 0.11);
+        for (let i = 0; i < 2; i++) {
+          add(new THREE.BoxGeometry(tw + 0.01, 0.01, dDepth + 0.01), std("#5A3A10", 0.8), 0.1 + i * 0.13);
         }
         break;
       }
@@ -3407,8 +3410,8 @@ export class Game {
       if (this.momLeftLeg) this.momLeftLeg.position.y = lerp(0.15, 0.22, t);
       if (this.momRightLeg) this.momRightLeg.position.y = lerp(0.15, 0.22, t);
 
-      // Lean torso back against couch back (inverted due to rotation.y = π)
-      this.mom.rotation.x = lerp(0, -0.15, t);
+      // Lean torso back against couch back
+      this.mom.rotation.x = lerp(0, 0.15, t);
 
       // Arms drape over armrests (wider spread, angled down)
       if (this.momLeftArm) this.momLeftArm.rotation.z = lerp(0, 0.6, t);
@@ -3417,7 +3420,7 @@ export class Game {
       if (this.momRightArm) this.momRightArm.rotation.x = lerp(0, 0.4, t);
 
       // Head tilts slightly forward to look at TV
-      if (this.momHead) this.momHead.rotation.x = lerp(0, 0.15, t);
+      if (this.momHead) this.momHead.rotation.x = lerp(0, -0.1, t);
     }
 
     // ── Idle seated breathing ──
@@ -3622,12 +3625,12 @@ export class Game {
   enterRelaxScene() {
     this.relaxSceneActive = true;
 
-    // Move Mom onto the couch, facing the TV
+    // Move Mom onto the couch, facing the TV (south / +Z direction)
     const couchGroup = this.furnitureGroups.find(g => g.userData.label === "couch");
     if (couchGroup) {
       this.mom.position.x = couchGroup.position.x;
-      // Scoot back against the couch back (+Z side)
-      this.mom.position.z = couchGroup.position.z + TILE_SIZE * 0.3;
+      // Scoot back against the couch back (-Z side, since couch is rotated 180°)
+      this.mom.position.z = couchGroup.position.z - TILE_SIZE * 0.3;
       // Update logical position to match
       const couchFurn = this.level.furniture.find(f => f.label === "couch");
       if (couchFurn) {
@@ -3635,8 +3638,8 @@ export class Game {
         this.momPos.z = couchFurn.z + couchFurn.h / 2 - 0.5;
       }
     }
-    // Face the TV (negative Z direction)
-    this.mom.rotation.y = Math.PI;
+    // Face the TV (positive Z / south direction — default facing)
+    this.mom.rotation.y = 0;
 
     this.relaxSitting = true;
     this.momOrigPos = this.mom.position.clone();

@@ -65,18 +65,18 @@ export const LEVELS: LevelData[] = [
     ],
     furniture: [
       // ─── Living Room (x=2..27, z=2..33) ───
-      // TV wall
-      { x:10, z:10, w:8, h:4, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
-      // Coffee table between TV and couch
+      // Couch (rotated 180° — back faces north, sitter faces south toward TV)
+      { x:10, z:10, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch", rot:Math.PI  },
+      // Coffee table between couch and TV
       { x:12, z:14, w:4, h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"         },
-      // Couch facing TV
-      { x:10, z:16, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch"               },
+      // TV + dresser (south of coffee table, thinner depth)
+      { x:10, z:18, w:8, h:2, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
       // Side table with wine glass to the left of couch
-      { x:6,  z:16, w:4, h:4, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
+      { x:6,  z:10, w:4, h:4, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
       // Ottoman to the right of couch
-      { x:20, z:16, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
+      { x:20, z:10, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
       // Lamp beside couch
-      { x:6,  z:12, w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
+      { x:6,  z:6,  w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
       // North wall — bookcase + fireplace
       { x:4,  z:2,  w:4, h:4, label:"bookcase",       col:"#8B5A2B", shape:"bookcase"            },
       { x:22, z:2,  w:4, h:4, label:"fireplace",      col:"#8B4513", shape:"fireplace"           },
@@ -110,7 +110,7 @@ export const LEVELS: LevelData[] = [
     ],
     rug: { x:8, z:10, w:14, h:10 },
     playerStart: { x:36, z:24 },
-    goal: { x:16, z:20, label:"The Couch" },
+    goal: { x:18, z:12, label:"The Couch" },
     npcs: [
       { type:"dog", x:36, z:8, radius: DOG_SOUND_RADIUS },
     ],
