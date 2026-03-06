@@ -30,6 +30,7 @@ export type FurnitureShape =
   | "nightstand" | "curtains" | "coatRack" | "sideTableGlass"
   | "kitchenIsland" | "toiletries" | "rugDecor"
   | "fireplace" | "toilet" | "vanity" | "roundGlassTable" | "diningChair"
+  | "diningTable" | "credenza"
   | "window" | "door";
 
 export interface FurnitureDef {
