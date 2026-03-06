@@ -3572,6 +3572,20 @@ export class Game {
   /** Called from GameView after zoom completes for 3D relax scenes */
   enterRelaxScene() {
     this.relaxSceneActive = true;
+
+    // Move Mom onto the couch before starting the sitting animation
+    const couchGroup = this.furnitureGroups.find(g => g.userData.label === "couch");
+    if (couchGroup) {
+      this.mom.position.x = couchGroup.position.x;
+      this.mom.position.z = couchGroup.position.z;
+      // Update logical position to match
+      const couchFurn = this.level.furniture.find(f => f.label === "couch");
+      if (couchFurn) {
+        this.momPos.x = couchFurn.x + couchFurn.w / 2 - 0.5;
+        this.momPos.z = couchFurn.z + couchFurn.h / 2 - 0.5;
+      }
+    }
+
     this.relaxSitting = true;
     this.momOrigPos = this.mom.position.clone();
 

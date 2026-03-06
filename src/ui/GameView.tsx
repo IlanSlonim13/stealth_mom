@@ -81,7 +81,8 @@ export function GameView() {
       game.setRelaxZoomCallback(() => {
         setRelaxActive(true);
         AudioManager.preload(["mom-sigh"]);
-        setTimeout(() => AudioManager.play("mom-sigh"), 400);
+        // Delay sigh until after sitting animation completes (~830ms) so it feels like she's settled
+        setTimeout(() => AudioManager.play("mom-sigh"), 1400);
         // Enter 3D relax scene for levels that support it
         const rd = RELAX_DATA[level.id];
         if (rd?.sceneMode === "3d") {
