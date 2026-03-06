@@ -71,13 +71,18 @@ export const LEVELS: LevelData[] = [
     ],
     furniture: [
       // ─── Dining Room (x=2..27, z=2..17) ───
-      // Narrow dining table — 1 chair per edge
+      // Narrow dining table — 1 chair per short edge, 3 chairs per long edge
       { x:8,  z:8,  w:12, h:4, label:"diningTable",   col:"#6B3A1E", shape:"diningTable"         },
-      // 4 Chairs — one per edge, rotated to face table, slightly tucked
-      { x:7,  z:9,  w:2, h:2, label:"chairL",  col:"#6B4226", shape:"diningChair", rot:-Math.PI/2 },  // west, faces east
-      { x:19, z:9,  w:2, h:2, label:"chairR",  col:"#6B4226", shape:"diningChair", rot:Math.PI/2  },  // east, faces west
-      { x:13, z:7,  w:2, h:2, label:"chairT",  col:"#6B4226", shape:"diningChair"                },  // north, faces south (default)
-      { x:13, z:11, w:2, h:2, label:"chairB",  col:"#6B4226", shape:"diningChair", rot:Math.PI    },  // south, faces north
+      // Short-edge chairs (ends of table) — rotated to face table
+      { x:7,  z:9,  w:2, h:2, label:"chairL",   col:"#6B4226", shape:"diningChair", rot:Math.PI/2  },  // west end, faces east
+      { x:19, z:9,  w:2, h:2, label:"chairR",   col:"#6B4226", shape:"diningChair", rot:-Math.PI/2 },  // east end, faces west
+      // Long-edge chairs (width of table) — 3 per side, tucked in
+      { x:10, z:7,  w:2, h:2, label:"chairT1",  col:"#6B4226", shape:"diningChair"                },  // north-left
+      { x:13, z:7,  w:2, h:2, label:"chairT2",  col:"#6B4226", shape:"diningChair"                },  // north-center
+      { x:16, z:7,  w:2, h:2, label:"chairT3",  col:"#6B4226", shape:"diningChair"                },  // north-right
+      { x:10, z:11, w:2, h:2, label:"chairB1",  col:"#6B4226", shape:"diningChair", rot:Math.PI    },  // south-left
+      { x:13, z:11, w:2, h:2, label:"chairB2",  col:"#6B4226", shape:"diningChair", rot:Math.PI    },  // south-center
+      { x:16, z:11, w:2, h:2, label:"chairB3",  col:"#6B4226", shape:"diningChair", rot:Math.PI    },  // south-right
       // Credenza — against north wall
       { x:22, z:2,  w:6, h:2, label:"credenza",       col:"#5C3A1E", shape:"credenza"            },
       // Door at z=18 wall — west doorway (x=4..5)
@@ -129,7 +134,7 @@ export const LEVELS: LevelData[] = [
     playerStart: { x:36, z:24 },
     goal: { x:12, z:26, label:"The Couch" },
     npcs: [
-      { type:"dog", x:26, z:22, radius: DOG_SOUND_RADIUS },
+      { type:"dog", x:22, z:26, radius: DOG_SOUND_RADIUS },
     ],
     traps: [],
     decoys: 1,
