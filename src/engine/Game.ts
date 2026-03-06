@@ -1264,18 +1264,18 @@ export class Game {
           mh.translateZ(-0.025);
           this.scene.add(mh);
 
-          // Blinds — thin horizontal strips at the top ~35% of window
+          // Blinds — horizontal slats covering top ~55% of window
           const blindsMat = new THREE.MeshStandardMaterial({
             color: "#F0EDE8", roughness: 0.7,
-            transparent: true, opacity: 0.7, depthWrite: false,
+            transparent: true, opacity: 0.85, depthWrite: false,
           });
-          const blindCount = 6;
-          const blindZoneH = winH * 0.35;
+          const blindCount = 10;
+          const blindZoneH = winH * 0.55;
           const blindStartY = TILE_H + sillY + winH - blindZoneH;
           for (let bi = 0; bi < blindCount; bi++) {
             const by = blindStartY + (bi + 0.5) * (blindZoneH / blindCount);
             const blind = new THREE.Mesh(
-              new THREE.BoxGeometry(winW * 0.96, 0.008, 0.015),
+              new THREE.BoxGeometry(winW * 0.96, 0.012, 0.015),
               blindsMat,
             );
             blind.position.set(cx3, by, cz3);
@@ -1284,6 +1284,15 @@ export class Game {
             blind.renderOrder = 3;
             this.scene.add(blind);
           }
+          // Valance/header bar at top of blinds
+          const valance = new THREE.Mesh(
+            new THREE.BoxGeometry(winW * 1.02, 0.04, 0.03),
+            new THREE.MeshStandardMaterial({ color: "#E8E0D5", roughness: 0.6 }),
+          );
+          valance.position.set(cx3, TILE_H + sillY + winH + 0.01, cz3);
+          valance.rotation.y = rotY;
+          valance.translateZ(-0.04);
+          this.scene.add(valance);
 
           // Baseboard
           const base = new THREE.Mesh(
@@ -1316,6 +1325,29 @@ export class Game {
           panelTop.rotation.y = rotY;
           panelTop.renderOrder = 1;
           this.scene.add(panelTop);
+
+          // Picture frames on transparent walls too
+          artCounter++;
+          if (artCounter % 3 === 0) {
+            const fColor = "#4A2820";
+            const cColor = artColors[(artCounter / 3 | 0) % artColors.length];
+            const frame = new THREE.Mesh(
+              new THREE.BoxGeometry(0.3 * TS, 0.25, 0.03),
+              new THREE.MeshStandardMaterial({ color: fColor, roughness: 0.7, transparent: true, opacity: 0.55 }),
+            );
+            frame.position.set(wx3 + ox * 0.85, TILE_H + 0.8, wz3 + oz * 0.85);
+            frame.rotation.y = rotY;
+            frame.renderOrder = 2;
+            this.scene.add(frame);
+            const canvas = new THREE.Mesh(
+              new THREE.BoxGeometry(0.24 * TS, 0.19, 0.02),
+              new THREE.MeshStandardMaterial({ color: cColor, roughness: 0.5, transparent: true, opacity: 0.55 }),
+            );
+            canvas.position.set(wx3 + ox * 0.83, TILE_H + 0.8, wz3 + oz * 0.83);
+            canvas.rotation.y = rotY;
+            canvas.renderOrder = 2;
+            this.scene.add(canvas);
+          }
         } else {
           // Fully opaque wall panel with decorations
           const panel = new THREE.Mesh(
@@ -1344,22 +1376,32 @@ export class Game {
           crown.rotation.y = rotY;
           this.scene.add(crown);
 
-          // Wall art every 4 opaque panels
+          // Picture frames every 3 opaque panels
           artCounter++;
-          if (artCounter % 4 === 0) {
-            const frameMat = new THREE.MeshStandardMaterial({ color: "#4A2820", roughness: 0.7 });
-            const canvasMat = new THREE.MeshStandardMaterial({
-              color: artColors[(artCounter / 4 | 0) % artColors.length],
-              roughness: 0.5,
-            });
-            const frame = new THREE.Mesh(new THREE.BoxGeometry(0.22 * TS, 0.18, 0.03), frameMat);
-            frame.position.set(wx3 + ox * 0.85, TILE_H + 0.75, wz3 + oz * 0.85);
+          if (artCounter % 3 === 0) {
+            const fColor = "#4A2820";
+            const cColor = artColors[(artCounter / 3 | 0) % artColors.length];
+            const frame = new THREE.Mesh(
+              new THREE.BoxGeometry(0.3 * TS, 0.25, 0.03),
+              new THREE.MeshStandardMaterial({ color: fColor, roughness: 0.7 }),
+            );
+            frame.position.set(wx3 + ox * 0.85, TILE_H + 0.8, wz3 + oz * 0.85);
             frame.rotation.y = rotY;
             this.scene.add(frame);
-            const canvas = new THREE.Mesh(new THREE.BoxGeometry(0.17 * TS, 0.13, 0.02), canvasMat);
-            canvas.position.set(wx3 + ox * 0.83, TILE_H + 0.75, wz3 + oz * 0.83);
+            const canvas = new THREE.Mesh(
+              new THREE.BoxGeometry(0.24 * TS, 0.19, 0.02),
+              new THREE.MeshStandardMaterial({ color: cColor, roughness: 0.5 }),
+            );
+            canvas.position.set(wx3 + ox * 0.83, TILE_H + 0.8, wz3 + oz * 0.83);
             canvas.rotation.y = rotY;
             this.scene.add(canvas);
+            const hl = new THREE.Mesh(
+              new THREE.BoxGeometry(0.06 * TS, 0.04, 0.005),
+              new THREE.MeshStandardMaterial({ color: "#FFFFFF", roughness: 0.3, transparent: true, opacity: 0.3 }),
+            );
+            hl.position.set(wx3 + ox * 0.82, TILE_H + 0.85, wz3 + oz * 0.82);
+            hl.rotation.y = rotY;
+            this.scene.add(hl);
           }
         }
       }
@@ -2435,16 +2477,25 @@ export class Game {
     const hairMat = new THREE.MeshToonMaterial({ color: "#4A2820" });
     switch (outfit.hair) {
       case "ponytail": {
-        // Hair cap on top
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.135, 8, 4), hairMat);
-        cap.scale.y = 0.45;
-        cap.position.set(0, 0.06, -0.02);
+        // Hair cap covering top of head
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.145, 8, 6), hairMat);
+        cap.scale.y = 0.6;
+        cap.position.set(0, 0.07, 0.0);
         head.add(cap);
+        // Side hair framing the face
+        const sideL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 5, 5), hairMat);
+        sideL.scale.set(0.7, 1.2, 0.9);
+        sideL.position.set(-0.1, -0.02, 0.04);
+        head.add(sideL);
+        const sideR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 5, 5), hairMat);
+        sideR.scale.set(0.7, 1.2, 0.9);
+        sideR.position.set(0.1, -0.02, 0.04);
+        head.add(sideR);
         // Tie point at back of head
         const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), hairMat);
         bun.position.set(0, -0.02, -0.12);
         head.add(bun);
-        // Ponytail hanging down from back of head
+        // Ponytail hanging down
         const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.02, 0.3, 5), hairMat);
         tail.position.set(0, -0.17, -0.14);
         tail.rotation.x = 0.3;
