@@ -183,6 +183,7 @@ export class Game {
       this.allWallSet.add(`${x},${z}`);
     });
     lvl.furniture.forEach((f) => {
+      if (f.shape === "door") return; // doors are walkable
       for (let dx = 0; dx < f.w; dx++)
         for (let dz = 0; dz < f.h; dz++)
           this.blocked.add(`${f.x + dx},${f.z + dz}`);
