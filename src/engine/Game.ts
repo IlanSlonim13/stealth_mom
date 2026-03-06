@@ -169,11 +169,15 @@ export class Game {
     target?: THREE.Mesh; // cheese piece being eaten
   } = { type: "idle", elapsed: 0, duration: 0 };
 
-  // Sitting pose targets (set once, lerped toward)
-  private relaxSitT = 0; // 0 = standing, 1 = fully sitting
-  private relaxSitting = false;
+  // Relax animation — multi-phase sit-down sequence
+  // Phases: 0=approach, 1=sit, 2=feet-up, 3=arms, 4=settle, 5=done
+  private relaxPhase = -1;
+  private relaxPhaseT = 0;
+  private relaxApproachStart: THREE.Vector3 | null = null;
+  private relaxApproachEnd: THREE.Vector3 | null = null;
+  private relaxApproachStartRot = 0;
 
-  // Store Mom's original positions for the sitting transition
+  // Store Mom's couch-seated Y for the sitting transition
   private momOrigPos: THREE.Vector3 | null = null;
 
   private level: LevelData;
@@ -3379,42 +3383,18 @@ export class Game {
   }
 
   // ── Relax scene update — sitting pose, animations, TV ─────────────────────
+  // Phase durations in seconds
+  private static readonly RELAX_PHASE_DURATIONS = [0.7, 0.6, 0.5, 0.5, 0.5];
+  // Phase names: 0=approach, 1=sit, 2=feet-up, 3=arms, 4=settle
+
   private updateRelaxScene(dt: number) {
     const f = this.frame;
 
-    // ── Smooth sitting transition ──
-    if (this.relaxSitting && this.relaxSitT < 1) {
-      this.relaxSitT = Math.min(this.relaxSitT + dt * 1.2, 1);
-      const t = easeOutQuad(this.relaxSitT);
+    // ── Multi-phase relax animation ──
+    this.updateRelaxAnimation(dt);
 
-      // Lower Mom onto the couch seat
-      if (this.momOrigPos) {
-        this.mom.position.y = lerp(this.momOrigPos.y, this.momOrigPos.y - 0.12, t);
-      }
-
-      // Legs extend forward toward coffee table (feet up)
-      if (this.momLeftLeg) this.momLeftLeg.rotation.x = lerp(0, -1.3, t);
-      if (this.momRightLeg) this.momRightLeg.rotation.x = lerp(0, -1.3, t);
-
-      // Raise legs to seat level
-      if (this.momLeftLeg) this.momLeftLeg.position.y = lerp(0.15, 0.22, t);
-      if (this.momRightLeg) this.momRightLeg.position.y = lerp(0.15, 0.22, t);
-
-      // Lean torso back against couch back
-      this.mom.rotation.x = lerp(0, 0.15, t);
-
-      // Arms drape over armrests (wider spread, angled down)
-      if (this.momLeftArm) this.momLeftArm.rotation.z = lerp(0, 0.6, t);
-      if (this.momRightArm) this.momRightArm.rotation.z = lerp(0, -0.6, t);
-      if (this.momLeftArm) this.momLeftArm.rotation.x = lerp(0, 0.4, t);
-      if (this.momRightArm) this.momRightArm.rotation.x = lerp(0, 0.4, t);
-
-      // Head tilts slightly forward to look at TV
-      if (this.momHead) this.momHead.rotation.x = lerp(0, -0.1, t);
-    }
-
-    // ── Idle seated breathing ──
-    if (this.relaxSitT >= 1 && this.relaxAnim.type === "idle") {
+    // ── Idle seated breathing (after all phases done) ──
+    if (this.relaxPhase >= 5 && this.relaxAnim.type === "idle") {
       const breath = Math.sin(f * 0.02) * 0.003;
       if (this.momHead) this.momHead.position.y += breath;
     }
@@ -3448,6 +3428,90 @@ export class Game {
 
     // ── Arm animations (cheese eating, wine drinking) ──
     this.updateRelaxAnim(dt);
+  }
+
+  /** Multi-phase relax animation: approach → sit → feet up → arms → settle */
+  private updateRelaxAnimation(dt: number) {
+    if (this.relaxPhase < 0 || this.relaxPhase >= 5) return;
+
+    const durations = Game.RELAX_PHASE_DURATIONS;
+    const dur = durations[this.relaxPhase];
+    this.relaxPhaseT = Math.min(this.relaxPhaseT + dt / dur, 1);
+    const t = easeOutQuad(this.relaxPhaseT);
+
+    switch (this.relaxPhase) {
+      // ── Phase 0: Approach — walk/slide from goal to couch seat ──
+      case 0: {
+        if (this.relaxApproachStart && this.relaxApproachEnd) {
+          this.mom.position.x = lerp(this.relaxApproachStart.x, this.relaxApproachEnd.x, t);
+          this.mom.position.z = lerp(this.relaxApproachStart.z, this.relaxApproachEnd.z, t);
+          // Smoothly rotate to face the TV (rotation.y → 0)
+          this.mom.rotation.y = lerp(this.relaxApproachStartRot, 0, t);
+        }
+        // Subtle walk bob
+        if (t < 0.9) {
+          this.mom.position.y += Math.sin(t * Math.PI * 4) * 0.005;
+        }
+        break;
+      }
+      // ── Phase 1: Sit down — lower onto couch, lean torso back ──
+      case 1: {
+        if (this.momOrigPos) {
+          this.mom.position.y = lerp(this.momOrigPos.y, this.momOrigPos.y - 0.12, t);
+        }
+        // Lean torso back against couch back
+        this.mom.rotation.x = lerp(0, 0.12, t);
+        break;
+      }
+      // ── Phase 2: Feet up — extend legs forward ──
+      case 2: {
+        if (this.momLeftLeg) {
+          this.momLeftLeg.rotation.x = lerp(0, -1.3, t);
+          this.momLeftLeg.position.y = lerp(0.15, 0.22, t);
+        }
+        if (this.momRightLeg) {
+          this.momRightLeg.rotation.x = lerp(0, -1.3, t);
+          this.momRightLeg.position.y = lerp(0.15, 0.22, t);
+        }
+        break;
+      }
+      // ── Phase 3: Arms on armrests ──
+      case 3: {
+        if (this.momLeftArm) {
+          this.momLeftArm.rotation.z = lerp(0, 0.6, t);
+          this.momLeftArm.rotation.x = lerp(0, 0.4, t);
+        }
+        if (this.momRightArm) {
+          this.momRightArm.rotation.z = lerp(0, -0.6, t);
+          this.momRightArm.rotation.x = lerp(0, 0.4, t);
+        }
+        break;
+      }
+      // ── Phase 4: Settle — head tilts back, torso relaxes fully ──
+      case 4: {
+        // Torso settles a bit more
+        this.mom.rotation.x = lerp(0.12, 0.18, t);
+        // Head tilts back comfortably
+        if (this.momHead) this.momHead.rotation.x = lerp(0, 0.12, t);
+        break;
+      }
+    }
+
+    // Advance to next phase when current completes
+    if (this.relaxPhaseT >= 1) {
+      // Store seated position after approach phase ends
+      if (this.relaxPhase === 0) {
+        this.momOrigPos = this.mom.position.clone();
+        // Update logical position to match couch
+        const couchFurn = this.level.furniture.find(f => f.label === "couch");
+        if (couchFurn) {
+          this.momPos.x = couchFurn.x + couchFurn.w / 2 - 0.5;
+          this.momPos.z = couchFurn.z + couchFurn.h / 2 - 0.5;
+        }
+      }
+      this.relaxPhase++;
+      this.relaxPhaseT = 0;
+    }
   }
 
   private updateRelaxAnim(dt: number) {
@@ -3615,24 +3679,25 @@ export class Game {
   enterRelaxScene() {
     this.relaxSceneActive = true;
 
-    // Move Mom onto the couch, facing the TV (south / +Z direction)
+    // Compute couch-seated target position
     const couchGroup = this.furnitureGroups.find(g => g.userData.label === "couch");
+    const couchTarget = new THREE.Vector3();
     if (couchGroup) {
-      this.mom.position.x = couchGroup.position.x;
-      // Scoot back against the couch back (-Z side, since couch is rotated 180°)
-      this.mom.position.z = couchGroup.position.z - TILE_SIZE * 0.3;
-      // Update logical position to match
-      const couchFurn = this.level.furniture.find(f => f.label === "couch");
-      if (couchFurn) {
-        this.momPos.x = couchFurn.x + couchFurn.w / 2 - 0.5;
-        this.momPos.z = couchFurn.z + couchFurn.h / 2 - 0.5;
-      }
+      couchTarget.set(
+        couchGroup.position.x,
+        this.mom.position.y,
+        couchGroup.position.z - TILE_SIZE * 0.3, // against north back (rotated couch)
+      );
     }
-    // Face the TV (positive Z / south direction — default facing)
-    this.mom.rotation.y = 0;
 
-    this.relaxSitting = true;
-    this.momOrigPos = this.mom.position.clone();
+    // Store approach start (current position) and end (couch seat)
+    this.relaxApproachStart = this.mom.position.clone();
+    this.relaxApproachEnd = couchTarget;
+    this.relaxApproachStartRot = this.mom.rotation.y;
+
+    // Kick off phase 0 (approach)
+    this.relaxPhase = 0;
+    this.relaxPhaseT = 0;
 
     // Find existing furniture groups by label
     const tvGroup = this.furnitureGroups.find(g => g.userData.label === "tv");
@@ -3779,7 +3844,8 @@ export class Game {
   /** Handle click during 3D relax scene — returns true if something was clicked */
   handleRelaxClick(clientX: number, clientY: number): boolean {
     if (!this.relaxSceneActive) return false;
-    if (this.relaxAnim.type !== "idle") return false; // animation in progress
+    if (this.relaxPhase < 5) return false; // relax animation still playing
+    if (this.relaxAnim.type !== "idle") return false; // arm animation in progress
 
     const rect = this.element.getBoundingClientRect();
     const mouse = new THREE.Vector2(
