@@ -71,8 +71,8 @@ export const LEVELS: LevelData[] = [
       { x:6,  z:28, w:4, h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"         },
       // Couch (rotated 180° — back faces north, sitter faces south toward TV)
       { x:4,  z:24, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch", rot:Math.PI  },
-      // Side table with wine glass to the right of couch
-      { x:14, z:24, w:4, h:4, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
+      // Side table with wine glass — small, NE of goal, next to couch
+      { x:13, z:24, w:2, h:2, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
       // Ottoman to the right of coffee table area
       { x:14, z:28, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
       // Lamp near couch, along west wall
@@ -82,9 +82,8 @@ export const LEVELS: LevelData[] = [
       { x:22, z:2,  w:4, h:4, label:"fireplace",      col:"#8B4513", shape:"fireplace"           },
       // Left wall — shelf (decoy)
       { x:4,  z:8,  w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
-      // Round glass table + accent plant (moved to open area)
+      // Round glass table (moved to open area)
       { x:18, z:10, w:4, h:4, label:"glassTable",     col:"#888888", shape:"roundGlassTable"     },
-      { x:24, z:28, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
       // Door at interior wall doorway (z=14..17, x=28)
       { x:28, z:14, w:1, h:4, label:"door1",          col:"#8B6F5C", shape:"door"                },
 
@@ -106,7 +105,7 @@ export const LEVELS: LevelData[] = [
       // East wall (x=42) — hallway windows
       [42,8],[42,9],[42,10],  [42,20],[42,21],[42,22],
       // South wall (z=34) — living room windows
-      [10,34],[11,34],[12,34],  [20,34],[21,34],[22,34],
+      [20,34],[21,34],[22,34],
     ],
     rug: { x:4, z:24, w:10, h:10 },
     playerStart: { x:36, z:24 },
