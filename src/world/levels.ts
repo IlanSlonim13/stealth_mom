@@ -62,32 +62,26 @@ export const LEVELS: LevelData[] = [
       [28,2],[28,3],[28,4],[28,5],[28,6],[28,7],
       [28,10],[28,11],[28,12],[28,13],
       [28,14],[28,15],[28,16],[28,17],
-      [28,18],[28,19],[28,20],[28,21],[28,22],[28,23],[28,24],
-      [28,25],[28,26],[28,27],[28,28],[28,29],[28,30],[28,31],[28,32],[28,33],
-      // Horizontal wall at z=18 from x=2..27, doorways at x=4..5 and x=14..15
+      [28,18],[28,19],[28,20],[28,21],
+      [28,24],[28,25],[28,26],[28,27],[28,28],[28,29],[28,30],[28,31],[28,32],[28,33],
+      // Horizontal wall at z=18 from x=2..27, doorway at x=4..5 only
       [2,18],[3,18],
-      [6,18],[7,18],[8,18],[9,18],[10,18],[11,18],[12,18],[13,18],
+      [6,18],[7,18],[8,18],[9,18],[10,18],[11,18],[12,18],[13,18],[14,18],[15,18],
       [16,18],[17,18],[18,18],[19,18],[20,18],[21,18],[22,18],[23,18],[24,18],[25,18],[26,18],[27,18],
     ],
     furniture: [
       // ─── Dining Room (x=2..27, z=2..17) ───
-      // Dining table — center of dining room (narrower for passage)
-      { x:8,  z:7,  w:12, h:6, label:"diningTable",   col:"#6B3A1E", shape:"diningTable"         },
-      // 8 Chairs around the table
-      { x:6,  z:7,  w:2, h:3, label:"chairL1",        col:"#6B4226", shape:"diningChair"         },
-      { x:6,  z:10, w:2, h:3, label:"chairL2",        col:"#6B4226", shape:"diningChair"         },
-      { x:20, z:7,  w:2, h:3, label:"chairR1",        col:"#6B4226", shape:"diningChair"         },
-      { x:20, z:10, w:2, h:3, label:"chairR2",        col:"#6B4226", shape:"diningChair"         },
-      { x:10, z:5,  w:4, h:2, label:"chairT1",        col:"#6B4226", shape:"diningChair"         },
-      { x:14, z:5,  w:4, h:2, label:"chairT2",        col:"#6B4226", shape:"diningChair"         },
-      { x:10, z:13, w:4, h:2, label:"chairB1",        col:"#6B4226", shape:"diningChair"         },
-      { x:14, z:13, w:4, h:2, label:"chairB2",        col:"#6B4226", shape:"diningChair"         },
+      // Narrow dining table — 1 chair per edge
+      { x:8,  z:8,  w:12, h:4, label:"diningTable",   col:"#6B3A1E", shape:"diningTable"         },
+      // 4 Chairs — one per edge, rotated to face table, slightly tucked
+      { x:7,  z:9,  w:2, h:2, label:"chairL",  col:"#6B4226", shape:"diningChair", rot:-Math.PI/2 },  // west, faces east
+      { x:19, z:9,  w:2, h:2, label:"chairR",  col:"#6B4226", shape:"diningChair", rot:Math.PI/2  },  // east, faces west
+      { x:13, z:7,  w:2, h:2, label:"chairT",  col:"#6B4226", shape:"diningChair"                },  // north, faces south (default)
+      { x:13, z:11, w:2, h:2, label:"chairB",  col:"#6B4226", shape:"diningChair", rot:Math.PI    },  // south, faces north
       // Credenza — against north wall
       { x:22, z:2,  w:6, h:2, label:"credenza",       col:"#5C3A1E", shape:"credenza"            },
       // Door at z=18 wall — west doorway (x=4..5)
       { x:4,  z:18, w:2, h:1, label:"diningDoorW",    col:"#8B6F5C", shape:"door"                },
-      // Door at z=18 wall — east doorway (x=14..15)
-      { x:14, z:18, w:2, h:1, label:"diningDoor",     col:"#8B6F5C", shape:"door"                },
 
       // ─── Living Room (x=2..27, z=19..33) ───
       // TV + dresser — right against the south-west wall
@@ -106,8 +100,10 @@ export const LEVELS: LevelData[] = [
       { x:2,  z:28, w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
       // Plant — south-east corner of living room
       { x:24, z:30, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
-      // Door at interior wall doorway (z=8..9, x=28)
+      // Door at interior wall doorway — dining room (z=8..9, x=28)
       { x:28, z:8, w:1, h:2, label:"door1",          col:"#8B6F5C", shape:"door"                },
+      // Door at interior wall doorway — living room (z=22..23, x=28)
+      { x:28, z:22, w:1, h:2, label:"doorLiving",    col:"#8B6F5C", shape:"door"                },
 
       // ─── Hallway (x=29..41) ───
       { x:32, z:4,  w:4, h:4, label:"hallMirror",     col:"#C0D0E0", shape:"mirror"              },
@@ -133,7 +129,7 @@ export const LEVELS: LevelData[] = [
     playerStart: { x:36, z:24 },
     goal: { x:12, z:26, label:"The Couch" },
     npcs: [
-      { type:"dog", x:18, z:18, radius: DOG_SOUND_RADIUS },
+      { type:"dog", x:26, z:22, radius: DOG_SOUND_RADIUS },
     ],
     traps: [],
     decoys: 1,
