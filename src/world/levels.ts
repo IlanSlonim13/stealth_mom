@@ -77,13 +77,16 @@ export const LEVELS: LevelData[] = [
       { x:14, z:28, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
       // Lamp near couch, along west wall
       { x:2,  z:20, w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
-      // North wall — bookcase + fireplace
-      { x:4,  z:2,  w:4, h:4, label:"bookcase",       col:"#8B5A2B", shape:"bookcase"            },
-      { x:22, z:2,  w:4, h:4, label:"fireplace",      col:"#8B4513", shape:"fireplace"           },
+      // North wall — fireplace
+      { x:4,  z:2,  w:4, h:4, label:"fireplace",      col:"#8B4513", shape:"fireplace"           },
+      // North-east wall — bookcase
+      { x:24, z:2,  w:4, h:4, label:"bookcase",       col:"#8B5A2B", shape:"bookcase"            },
       // Left wall — shelf (decoy)
       { x:4,  z:8,  w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
-      // Round glass table (moved to open area)
+      // Round glass table (open area)
       { x:18, z:10, w:4, h:4, label:"glassTable",     col:"#888888", shape:"roundGlassTable"     },
+      // Plant — south-east corner of living room
+      { x:24, z:30, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
       // Door at interior wall doorway (z=14..17, x=28)
       { x:28, z:14, w:1, h:4, label:"door1",          col:"#8B6F5C", shape:"door"                },
 
