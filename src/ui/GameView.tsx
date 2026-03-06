@@ -35,6 +35,7 @@ export function GameView() {
   const startLevel     = useGameStore((s) => s.startLevel);
 
   const [bubbleFading, setBubbleFading] = useState(false);
+  const [momScreenPos, setMomScreenPos] = useState<{ x: number; y: number } | null>(null);
   const decoyModeRef = useRef(decoyMode);
   decoyModeRef.current = decoyMode;
   const throwDecoyRef = useRef(throwDecoyFn);
@@ -92,6 +93,19 @@ export function GameView() {
       gameRef.current = null;
     };
   }, [levelIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track Mom's screen position during intro for speech bubble placement
+  useEffect(() => {
+    if (!introActive) { setMomScreenPos(null); return; }
+    let id: number;
+    const tick = () => {
+      const game = gameRef.current;
+      if (game) setMomScreenPos(game.getMomScreenPos());
+      id = requestAnimationFrame(tick);
+    };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, [introActive]);
 
   // When relaxActive turns on, start timers for quote and button
   useEffect(() => {
@@ -162,9 +176,6 @@ export function GameView() {
       {introActive && (
         <div style={{
           position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-          display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "flex-start",
-          paddingTop: "12%",
           pointerEvents: "none",
           opacity: bubbleFading ? 0 : 1,
           transition: "opacity 0.6s ease-out",
@@ -176,47 +187,62 @@ export function GameView() {
             }
           `}</style>
 
-          {/* Level label */}
-          <p style={{
-            fontFamily: "Georgia, serif", fontSize: 10, letterSpacing: 4,
-            color: "#FFF", opacity: 0.4, textTransform: "uppercase",
-            margin: "0 0 6px", animation: "bubbleIn 0.5s ease-out",
-          }}>
-            Level {level.id}
-          </p>
-          <p style={{
-            fontFamily: "Georgia, serif", fontSize: 16, fontStyle: "italic",
-            color: "#FFF", opacity: 0.7, margin: "0 0 16px",
-            animation: "bubbleIn 0.5s ease-out 0.1s both",
-          }}>
-            {level.name}
-          </p>
-
-          {/* Speech bubble */}
+          {/* Level label — top center */}
           <div style={{
-            position: "relative",
-            background: "rgba(255,255,255,0.95)",
-            borderRadius: 16,
-            padding: "12px 20px",
-            maxWidth: 260,
-            animation: "bubbleIn 0.4s ease-out 0.3s both",
+            position: "absolute", top: "6%", left: 0, right: 0,
+            display: "flex", flexDirection: "column", alignItems: "center",
           }}>
             <p style={{
-              fontFamily: "Georgia, serif", fontSize: 14,
-              color: "#2A1A2A", margin: 0, textAlign: "center",
-              fontStyle: "italic", lineHeight: 1.5,
+              fontFamily: "Georgia, serif", fontSize: 10, letterSpacing: 4,
+              color: "#FFF", opacity: 0.4, textTransform: "uppercase",
+              margin: "0 0 6px", animation: "bubbleIn 0.5s ease-out",
             }}>
-              {quote}
+              Level {level.id}
             </p>
-            {/* Triangle pointer */}
-            <div style={{
-              position: "absolute", bottom: -8, left: "50%", marginLeft: -8,
-              width: 0, height: 0,
-              borderLeft: "8px solid transparent",
-              borderRight: "8px solid transparent",
-              borderTop: "8px solid rgba(255,255,255,0.95)",
-            }} />
+            <p style={{
+              fontFamily: "Georgia, serif", fontSize: 16, fontStyle: "italic",
+              color: "#FFF", opacity: 0.7, margin: 0,
+              animation: "bubbleIn 0.5s ease-out 0.1s both",
+            }}>
+              {level.name}
+            </p>
           </div>
+
+          {/* Speech bubble — positioned above Mom's head */}
+          {momScreenPos && (
+            <div style={{
+              position: "absolute",
+              left: momScreenPos.x,
+              top: momScreenPos.y - 20,
+              transform: "translate(-50%, -100%)",
+              display: "flex", flexDirection: "column", alignItems: "center",
+              animation: "bubbleIn 0.4s ease-out 0.3s both",
+            }}>
+              <div style={{
+                position: "relative",
+                background: "rgba(255,255,255,0.95)",
+                borderRadius: 16,
+                padding: "12px 20px",
+                maxWidth: 260,
+              }}>
+                <p style={{
+                  fontFamily: "Georgia, serif", fontSize: 14,
+                  color: "#2A1A2A", margin: 0, textAlign: "center",
+                  fontStyle: "italic", lineHeight: 1.5,
+                }}>
+                  {quote}
+                </p>
+                {/* Triangle pointer */}
+                <div style={{
+                  position: "absolute", bottom: -8, left: "50%", marginLeft: -8,
+                  width: 0, height: 0,
+                  borderLeft: "8px solid transparent",
+                  borderRight: "8px solid transparent",
+                  borderTop: "8px solid rgba(255,255,255,0.95)",
+                }} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
