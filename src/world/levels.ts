@@ -93,16 +93,14 @@ export const LEVELS: LevelData[] = [
       { x:4,  z:32, w:8, h:2, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
       // Coffee table between TV and couch
       { x:6,  z:28, w:4, h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"         },
-      // Chaise lounge — left of couch, Mom's end spot
-      { x:2,  z:24, w:2, h:4, label:"chaiseLounge",   col:"#8B6F5C", shape:"chaiseLounge", rot:Math.PI },
       // Couch (rotated 180° — back faces north, sitter faces south toward TV)
       { x:4,  z:24, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch", rot:Math.PI  },
-      // Side table with wine glass — between chaise and couch
-      { x:2,  z:22, w:2, h:2, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
+      // Side table with wine glass — small, NE of goal, next to couch
+      { x:13, z:24, w:2, h:2, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
       // Ottoman to the right of coffee table area
       { x:14, z:28, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
       // Lamp near couch, along west wall
-      { x:2,  z:19, w:3, h:3, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
+      { x:2,  z:20, w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
       // Shelf (decoy) — along west wall in living room
       { x:2,  z:28, w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
       // Plant — south-east corner of living room

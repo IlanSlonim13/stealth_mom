@@ -3166,16 +3166,9 @@ export class Game {
         const zoomT = Math.min(this.relaxZoomElapsed / INTRO_ZOOM_SECS, 1);
         const eased = easeOutQuad(zoomT);
         this.frust = lerp(this.introFrustEnd, this.relaxFrustTarget, eased);
-        // Pan camera from room center toward the couch/chaise area
-        const chaiseFurn = this.level.furniture.find(f => f.label === "chaiseLounge");
-        const couchFurn = this.level.furniture.find(f => f.label === "couch");
-        const targetFurn = chaiseFurn || couchFurn;
-        const momWX = targetFurn
-          ? (targetFurn.x + targetFurn.w / 2 - 0.5) * TILE_SIZE
-          : this.mom.position.x;
-        const momWZ = targetFurn
-          ? (targetFurn.z + targetFurn.h / 2 - 0.5) * TILE_SIZE
-          : this.mom.position.z;
+        // Pan camera from room center to mom
+        const momWX = this.mom.position.x;
+        const momWZ = this.mom.position.z;
         const tx = lerp(0, momWX, eased);
         const tz = lerp(0, momWZ, eased);
         this.camTarget.set(tx, 0, tz);
@@ -3740,12 +3733,10 @@ export class Game {
       } else if (this.relaxPhase === 2) {
         // Snap to seat position (computed at correct seat-top height)
         if (this.relaxSeatPos) this.mom.position.copy(this.relaxSeatPos);
-        // Use chaise lounge as sit target, fall back to couch
-        const sitFurn = this.level.furniture.find(f => f.label === "chaiseLounge")
-          || this.level.furniture.find(f => f.label === "couch");
-        if (sitFurn) {
-          this.momPos.x = sitFurn.x + sitFurn.w / 2 - 0.5;
-          this.momPos.z = sitFurn.z + sitFurn.h / 2 - 0.5;
+        const couchFurn = this.level.furniture.find(f => f.label === "couch");
+        if (couchFurn) {
+          this.momPos.x = couchFurn.x + couchFurn.w / 2 - 0.5;
+          this.momPos.z = couchFurn.z + couchFurn.h / 2 - 0.5;
         }
       }
       this.relaxPhase++;
@@ -3922,16 +3913,10 @@ export class Game {
   enterRelaxScene() {
     this.relaxSceneActive = true;
 
-    // Compute walk waypoints: goal → gap between couch & coffee table → chaise/couch
+    // Compute walk waypoints: goal → gap between couch & coffee table → couch front
     const couchGroup = this.furnitureGroups.find(g => g.userData.label === "couch");
-    const chaiseLoungeGroup = this.furnitureGroups.find(g => g.userData.label === "chaiseLounge");
     const coffeeTableGroup = this.furnitureGroups.find(g => g.userData.label === "coffeeTable");
     const couchFurn = this.level.furniture.find(f => f.label === "couch");
-    const chaiseFurn = this.level.furniture.find(f => f.label === "chaiseLounge");
-
-    // Prefer chaise lounge as the sit target, fall back to couch center
-    const sitGroup = chaiseLoungeGroup || couchGroup;
-    const sitFurn = chaiseFurn || couchFurn;
 
     const momY = this.mom.position.y;
     // The gap between couch south edge and coffee table north edge
@@ -3944,19 +3929,20 @@ export class Game {
     const gapEntryX = couchGroup
       ? couchGroup.position.x + (couchFurn ? couchFurn.w * TILE_SIZE * 0.5 : 1.0) + TILE_SIZE * 0.5
       : this.mom.position.x - 0.3;
-    // Target X: chaise lounge center (or couch center as fallback)
-    const sitCenterX = sitGroup ? sitGroup.position.x : this.mom.position.x - 1.0;
-    // Seat z: center of the sit target (she sits facing TV/south)
-    const seatZ = sitGroup ? sitGroup.position.z : gapZ - 0.3;
-    // Seat Y: Mom's hip bottom (local y=0.30) rests on seat top surface
-    const seatTopY = (sitGroup?.position.y ?? TILE_H) + 0.33;
+    // Center of couch in x (where she'll sit)
+    const couchCenterX = couchGroup ? couchGroup.position.x : this.mom.position.x - 1.0;
+    // Seat z: center of the couch (she sits facing TV/south)
+    const seatZ = couchGroup ? couchGroup.position.z : gapZ - 0.3;
+    // Seat Y: Mom's hip bottom (local y=0.30) rests on couch seat top surface
+    // Couch seat top = group.y(0.15) + seat center(0.25) + half-thickness(0.08) = 0.48
+    const seatTopY = (couchGroup?.position.y ?? TILE_H) + 0.33;
     const seatedMomY = seatTopY - 0.30; // hip pivot sits on seat surface
 
     this.relaxWaypoints = [
       new THREE.Vector3(gapEntryX, momY, gapZ),       // step 1: into the gap
-      new THREE.Vector3(sitCenterX, momY, gapZ),       // step 2: walk west through gap to chaise
+      new THREE.Vector3(couchCenterX, momY, gapZ),     // step 2: walk west through gap
     ];
-    this.relaxSeatPos = new THREE.Vector3(sitCenterX, seatedMomY, seatZ);
+    this.relaxSeatPos = new THREE.Vector3(couchCenterX, seatedMomY, seatZ);
     this.relaxWalkStartPos = this.mom.position.clone();
     this.relaxStartRotY = this.mom.rotation.y;
 
@@ -4037,6 +4023,14 @@ export class Game {
       sideTableGroup.add(wineGroup);
       this.relaxWineGlass = wineGroup;
       this.relaxClickables.push(wineGroup);
+
+      // Invisible hitbox so the wine glass is easy to click
+      const wineHitbox = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 8, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      wineHitbox.position.y = 0.06;
+      wineGroup.add(wineHitbox);
 
       // Add glow hint
       const wineGlow = new THREE.Mesh(
