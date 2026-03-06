@@ -305,8 +305,8 @@ export class Game {
     // ── Road position ──
     const roadZ = fenceMaxZ + 3.5;
     // Full street width spans all lots
-    const totalMinX = fenceMinX - (lotW + lotGap) * 2;
-    const totalMaxX = fenceMaxX + (lotW + lotGap) * 2;
+    const totalMinX = fenceMinX - (lotW + lotGap);
+    const totalMaxX = fenceMaxX + (lotW + lotGap);
     const roadW = totalMaxX - totalMinX + 6;
     const roadCenterX = (totalMinX + totalMaxX) / 2;
 
@@ -323,32 +323,34 @@ export class Game {
     this.scene.add(grass);
 
     // ── Helper: build a fence rectangle ──
-    const buildFenceRect = (x1: number, z1: number, x2: number, z2: number, gateZ?: number) => {
-      const addPost = (px: number, pz: number) => {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
-        post.position.set(px, 0.2, pz);
-        this.scene.add(post);
-      };
+    const buildFenceRect = (x1: number, z1: number, x2: number, z2: number, gateZ?: number, simple = false) => {
       const addRail = (px: number, pz: number, rw: number, rd: number) => {
         const rail = new THREE.Mesh(new THREE.BoxGeometry(rw, 0.05, rd), fenceMat);
         rail.position.set(px, 0.25, pz);
         this.scene.add(rail);
       };
-      // North & South
-      for (let x = x1; x <= x2; x += 0.8) {
-        addPost(x, z1);
-        addPost(x, z2);
-      }
+      // Rails on all 4 sides
       addRail((x1 + x2) / 2, z1, x2 - x1, 0.06);
       addRail((x1 + x2) / 2, z2, x2 - x1, 0.06);
-      // East & West (with optional gate gap on south side)
-      for (let z = z1; z <= z2; z += 0.8) {
-        if (gateZ !== undefined && Math.abs(z - gateZ) < 0.6) continue;
-        addPost(x1, z);
-        addPost(x2, z);
-      }
       addRail(x1, (z1 + z2) / 2, 0.06, z2 - z1);
       addRail(x2, (z1 + z2) / 2, 0.06, z2 - z1);
+      // Posts — only for player fence (simple=false), sparse spacing
+      if (!simple) {
+        const spacing = 1.6;
+        for (let x = x1; x <= x2; x += spacing) {
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
+          post.position.set(x, 0.2, z1); this.scene.add(post);
+          const post2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
+          post2.position.set(x, 0.2, z2); this.scene.add(post2);
+        }
+        for (let z = z1; z <= z2; z += spacing) {
+          if (gateZ !== undefined && Math.abs(z - gateZ) < 0.6) continue;
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
+          post.position.set(x1, 0.2, z); this.scene.add(post);
+          const post2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
+          post2.position.set(x2, 0.2, z); this.scene.add(post2);
+        }
+      }
     };
 
     // Player's fence
@@ -544,7 +546,7 @@ export class Game {
       wallCol: string, roofCol: string, faceDir: "south" | "north",
     ) => {
       // Fence around the lot
-      buildFenceRect(lotMinX, lotMinZ, lotMaxX, lotMaxZ);
+      buildFenceRect(lotMinX, lotMinZ, lotMaxX, lotMaxZ, undefined, true);
 
       // House position within the lot
       const hw = Math.min(neighborHouseW, (lotMaxX - lotMinX) * 0.7);
@@ -570,9 +572,6 @@ export class Game {
       // Tree in the back yard
       const treeZ = faceDir === "south" ? lotMinZ + 1.5 : lotMaxZ - 1.5;
       addTree(lotMinX + 1.5, treeZ);
-
-      // Bushes
-      addBushes(lotMinX, lotMinZ, lotMaxX, lotMaxZ);
     };
 
     // ── Side neighbors (same side of road, facing south toward the front road) ──
@@ -581,19 +580,17 @@ export class Game {
       ["#C8B898", "#6A3A1A"], ["#DCC8A8", "#8A5A2A"],
     ];
 
-    // Left neighbors (1-2 lots)
-    for (let i = 0; i < 2; i++) {
-      const lx1 = fenceMinX - (lotW + lotGap) * (i + 1);
-      const lx2 = lx1 + lotW;
-      const [wc, rc] = houseColors[i % houseColors.length];
-      buildNeighborLot(lx1, fenceMinZ, lx2, fenceMaxZ, wc, rc, "south");
+    // Left neighbor
+    {
+      const lx1 = fenceMinX - (lotW + lotGap);
+      const [wc, rc] = houseColors[0];
+      buildNeighborLot(lx1, fenceMinZ, lx1 + lotW, fenceMaxZ, wc, rc, "south");
     }
-    // Right neighbors (1-2 lots)
-    for (let i = 0; i < 2; i++) {
-      const rx1 = fenceMaxX + lotGap + (lotW + lotGap) * i;
-      const rx2 = rx1 + lotW;
-      const [wc, rc] = houseColors[(i + 2) % houseColors.length];
-      buildNeighborLot(rx1, fenceMinZ, rx2, fenceMaxZ, wc, rc, "south");
+    // Right neighbor
+    {
+      const rx1 = fenceMaxX + lotGap;
+      const [wc, rc] = houseColors[1];
+      buildNeighborLot(rx1, fenceMinZ, rx1 + lotW, fenceMaxZ, wc, rc, "south");
     }
 
     // ── Across-the-road houses (facing north toward the front road) ──
@@ -604,16 +601,14 @@ export class Game {
       ["#C8C0A8", "#5A4A2A"], ["#E0D0B0", "#8A4A1A"],
       ["#B8B0A0", "#6A4A3A"],
     ];
-    // One house across from each lot on our side (player + 2 left + 2 right = 5)
+    // Houses across the road (3 lots)
     const acrossPositions = [
-      fenceMinX - (lotW + lotGap) * 2,
       fenceMinX - (lotW + lotGap),
-      fenceMinX,
+      fenceMinX + (fenceMaxX - fenceMinX - lotW) / 2,
       fenceMaxX + lotGap,
-      fenceMaxX + lotGap + lotW + lotGap,
     ];
     acrossPositions.forEach((ax, i) => {
-      buildNeighborLot(ax, acrossLotMinZ, ax + lotW, acrossLotMaxZ, acrossColors[i % acrossColors.length][0], acrossColors[i % acrossColors.length][1], "north");
+      buildNeighborLot(ax, acrossLotMinZ, ax + lotW, acrossLotMaxZ, acrossColors[i][0], acrossColors[i][1], "north");
     });
 
     // ── Back-to-back houses (facing north, their back yards face player's back yard) ──
@@ -651,15 +646,13 @@ export class Game {
       this.scene.add(sw);
     }
 
-    // Back neighbor lots (facing north toward the back road)
+    // Back neighbor lots (facing north toward the back road, 3 lots)
     const backColors: [string, string][] = [
       ["#C8C0B0", "#6A4A2A"], ["#D0C4B4", "#7A5A3A"],
-      ["#DCD0C0", "#8A5A2A"], ["#C4B8A0", "#5A3A1A"],
-      ["#D4C8B8", "#7A4A2A"],
+      ["#DCD0C0", "#8A5A2A"],
     ];
-    const backPositions = acrossPositions; // same X positions as across-road
-    backPositions.forEach((bx, i) => {
-      buildNeighborLot(bx, backLotMinZ, bx + lotW, backLotMaxZ, backColors[i % backColors.length][0], backColors[i % backColors.length][1], "north");
+    acrossPositions.forEach((bx, i) => {
+      buildNeighborLot(bx, backLotMinZ, bx + lotW, backLotMaxZ, backColors[i][0], backColors[i][1], "north");
     });
 
     // Shared back fence (wooden, taller than picket fence)
@@ -670,7 +663,7 @@ export class Game {
     );
     sharedFence.position.set(roadCenterX, 0.225, sharedFenceZ);
     this.scene.add(sharedFence);
-    for (let x = totalMinX - 2; x <= totalMaxX + 2; x += 0.8) {
+    for (let x = totalMinX - 2; x <= totalMaxX + 2; x += 2.5) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), stdMat("#6B5335", 0.8));
       post.position.set(x, 0.25, sharedFenceZ);
       this.scene.add(post);
