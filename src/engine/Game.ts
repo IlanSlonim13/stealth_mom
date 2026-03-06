@@ -2132,21 +2132,22 @@ export class Game {
         zGroup.add(zSprite);
       }
 
-      // Bone thought bubble
+      // Bone thought bubble (child of group so it moves with dog)
       const dogTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
       const dogTbGroup = new THREE.Group();
       dogTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), dogTbMat));
+      // Stem dots connecting bubble to head
       const dogDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), dogTbMat);
-      dogDot1.position.set(-0.12, -0.18, 0);
+      dogDot1.position.set(-0.08, -0.18, 0);
       dogTbGroup.add(dogDot1);
-      const dogDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), dogTbMat);
-      dogDot2.position.set(-0.18, -0.28, 0);
+      const dogDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), dogTbMat);
+      dogDot2.position.set(-0.14, -0.30, 0);
       dogTbGroup.add(dogDot2);
       const boneSprite = this.makeBoneSprite();
       boneSprite.position.set(0, 0.02, 0);
       dogTbGroup.add(boneSprite);
-      dogTbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.3, 0.65, (spawnZ - this.cz) * TILE_SIZE);
-      this.scene.add(dogTbGroup);
+      dogTbGroup.position.set(0.2, 0.50, 0);
+      group.add(dogTbGroup);
 
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
@@ -2232,23 +2233,23 @@ export class Game {
       coneMesh.position.set((spawnX - this.cx) * TILE_SIZE, 0.04, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(coneMesh);
 
-      // Baby talk speech bubble
+      // Baby talk speech bubble (child of group so it moves with toddler)
       const toddlerTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
       const toddlerTbGroup = new THREE.Group();
       toddlerTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), toddlerTbMat));
       const tDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), toddlerTbMat);
-      tDot1.position.set(-0.12, -0.18, 0);
+      tDot1.position.set(-0.08, -0.18, 0);
       toddlerTbGroup.add(tDot1);
-      const tDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), toddlerTbMat);
-      tDot2.position.set(-0.18, -0.28, 0);
+      const tDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), toddlerTbMat);
+      tDot2.position.set(-0.14, -0.30, 0);
       toddlerTbGroup.add(tDot2);
       const babyIdx = Math.floor(Math.random() * BABY_TALK.length);
       const babyText = this.makeTextSprite(BABY_TALK[babyIdx]);
       babyText.position.set(0, 0.04, 0);
       babyText.name = "bubbleText";
       toddlerTbGroup.add(babyText);
-      toddlerTbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.3, 0.9, (spawnZ - this.cz) * TILE_SIZE);
-      this.scene.add(toddlerTbGroup);
+      toddlerTbGroup.position.set(0.2, 0.75, 0);
+      group.add(toddlerTbGroup);
 
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
@@ -2345,14 +2346,15 @@ export class Game {
       coneMesh2.position.set((spawnX - this.cx) * TILE_SIZE, 0.04, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(coneMesh2);
 
+      // Thought bubble (child of group so it moves with husband)
       const tbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
       const tbGroup = new THREE.Group();
       tbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 12), tbMat));
       const dot1 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), tbMat);
-      dot1.position.set(-0.15, -0.2, 0);
+      dot1.position.set(-0.10, -0.22, 0);
       tbGroup.add(dot1);
       const dot2 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), tbMat);
-      dot2.position.set(-0.22, -0.32, 0);
+      dot2.position.set(-0.18, -0.36, 0);
       tbGroup.add(dot2);
       const dadIdx = Math.floor(Math.random() * DAD_THOUGHTS.length);
       const initThought = def?.thought ?? DAD_THOUGHTS[dadIdx];
@@ -2360,8 +2362,8 @@ export class Game {
       dadText.position.set(0, 0.04, 0);
       dadText.name = "bubbleText";
       tbGroup.add(dadText);
-      tbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.35, 1.4, (spawnZ - this.cz) * TILE_SIZE);
-      this.scene.add(tbGroup);
+      tbGroup.position.set(0.25, 1.25, 0);
+      group.add(tbGroup);
 
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
@@ -2444,16 +2446,16 @@ export class Game {
 
   private makeTextSprite(text: string): THREE.Sprite {
     const canvas = document.createElement("canvas");
-    canvas.width = 256; canvas.height = 64;
+    canvas.width = 512; canvas.height = 128;
     const ctx = canvas.getContext("2d")!;
-    ctx.clearRect(0, 0, 256, 64);
+    ctx.clearRect(0, 0, 512, 128);
     ctx.fillStyle = "#333333";
-    ctx.font = "bold 14px Arial";
+    ctx.font = "bold 28px Arial";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(text, 128, 32);
+    ctx.fillText(text, 256, 64);
     const tex = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-    sprite.scale.set(1.0, 0.25, 1);
+    sprite.scale.set(0.5, 0.13, 1);
     return sprite;
   }
 
@@ -2695,12 +2697,9 @@ export class Game {
           if (npc.circ)  npc.circ.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.02, (npc.pos.z - this.cz) * TILE_SIZE);
           if (npc.pulse) npc.pulse.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.03, (npc.pos.z - this.cz) * TILE_SIZE);
           if (npc.zGroup) npc.zGroup.position.set((npc.pos.x - this.cx) * TILE_SIZE + 0.3, 0.6, (npc.pos.z - this.cz) * TILE_SIZE);
+          // Thought bubble bobs (it's a child of group, so only adjust local Y)
           if (npc.thoughtBubble) {
-            npc.thoughtBubble.position.set(
-              (npc.pos.x - this.cx) * TILE_SIZE + 0.3,
-              0.65 + Math.sin(this.frame * 0.02) * 0.05,
-              (npc.pos.z - this.cz) * TILE_SIZE,
-            );
+            npc.thoughtBubble.position.y = 0.50 + Math.sin(this.frame * 0.02) * 0.05;
           }
         } else {
           // Sleeping Z animation
@@ -2713,9 +2712,9 @@ export class Game {
               (child as THREE.Sprite).material.opacity = 0.35 + Math.sin(t) * 0.35;
             });
           }
-          // Dog thought bubble bob
+          // Dog thought bubble bob (child of group, local Y)
           if (npc.thoughtBubble) {
-            npc.thoughtBubble.position.y = 0.65 + Math.sin(this.frame * 0.02) * 0.05;
+            npc.thoughtBubble.position.y = 0.50 + Math.sin(this.frame * 0.02) * 0.05;
           }
         }
         continue;
@@ -2808,13 +2807,9 @@ export class Game {
         npc.coneMesh.rotation.z = -(npc.facing - Math.PI / 2);
       }
       if (npc.thoughtBubble) {
-        const bubbleY = npc.type === "toddler" ? 0.9 : 1.4;
-        const bubbleX = npc.type === "toddler" ? 0.3 : 0.35;
-        npc.thoughtBubble.position.set(
-          (npc.pos.x - this.cx) * TILE_SIZE + bubbleX,
-          bubbleY + Math.sin(this.frame * 0.02) * 0.05,
-          (npc.pos.z - this.cz) * TILE_SIZE,
-        );
+        // Bubble is child of group — just bob the local Y
+        const baseY = npc.type === "toddler" ? 0.75 : 1.25;
+        npc.thoughtBubble.position.y = baseY + Math.sin(this.frame * 0.02) * 0.05;
 
         // Cycle text every ~3-4 seconds
         const cycleInterval = npc.type === "toddler" ? 180 : 240;
