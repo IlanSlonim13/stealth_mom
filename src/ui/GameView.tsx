@@ -215,6 +215,10 @@ export function GameView() {
               from { opacity:0; transform:translateY(10px) scale(0.9); }
               to   { opacity:1; transform:translateY(0) scale(1); }
             }
+            @keyframes tutorialFade {
+              0%   { opacity:0; transform:translateY(12px) scale(0.95); }
+              100% { opacity:1; transform:translateY(0) scale(1); }
+            }
           `}</style>
 
           {/* Level label — top center */}
@@ -261,7 +265,7 @@ export function GameView() {
                 padding: "16px 24px",
                 maxWidth: 280,
                 textAlign: "center",
-                animation: "bubbleIn 0.3s ease-out",
+                animation: "tutorialFade 0.8s ease-in-out",
               }}>
                 <p style={{ fontSize: 28, margin: "0 0 8px" }}>
                   {LEVEL1_TUTORIAL[tutorialStep].emoji}
