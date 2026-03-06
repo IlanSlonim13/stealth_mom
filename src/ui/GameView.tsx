@@ -38,6 +38,7 @@ export function GameView() {
   const [bubbleFading, setBubbleFading] = useState(false);
   const [momScreenPos, setMomScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [tutorialStep, setTutorialStep] = useState(0);
+  const [tutorialFading, setTutorialFading] = useState(false);
   const decoyModeRef = useRef(decoyMode);
   decoyModeRef.current = decoyMode;
   const throwDecoyRef = useRef(throwDecoyFn);
@@ -55,6 +56,7 @@ export function GameView() {
     const el = mountRef.current;
     setBubbleFading(false);
     setTutorialStep(0);
+    setTutorialFading(false);
     setConsumed(new Set());
     setFeedbacks([]);
     setShowNextBtn(false);
@@ -215,9 +217,13 @@ export function GameView() {
               from { opacity:0; transform:translateY(10px) scale(0.9); }
               to   { opacity:1; transform:translateY(0) scale(1); }
             }
-            @keyframes tutorialFade {
+            @keyframes tutorialFadeIn {
               0%   { opacity:0; transform:translateY(12px) scale(0.95); }
               100% { opacity:1; transform:translateY(0) scale(1); }
+            }
+            @keyframes tutorialFadeOut {
+              0%   { opacity:1; transform:translateY(0) scale(1); }
+              100% { opacity:0; transform:translateY(-12px) scale(0.95); }
             }
           `}</style>
 
@@ -247,11 +253,17 @@ export function GameView() {
             <div
               onClick={(e) => {
                 e.stopPropagation();
-                const next = tutorialStep + 1;
-                setTutorialStep(next);
-                if (next >= LEVEL1_TUTORIAL.length) {
-                  gameRef.current?.setIntroPaused(false);
-                }
+                if (tutorialFading) return; // already transitioning
+                setTutorialFading(true);
+                // After fade-out (2.4s) + pause (0.75s), advance to next step
+                setTimeout(() => {
+                  const next = tutorialStep + 1;
+                  setTutorialStep(next);
+                  setTutorialFading(false);
+                  if (next >= LEVEL1_TUTORIAL.length) {
+                    gameRef.current?.setIntroPaused(false);
+                  }
+                }, 2400 + 750);
               }}
               style={{
                 position: "absolute", bottom: "12%", left: "50%",
@@ -259,13 +271,15 @@ export function GameView() {
                 pointerEvents: "auto",
               }}
             >
-              <div key={tutorialStep} style={{
+              <div key={`${tutorialStep}-${tutorialFading}`} style={{
                 background: "rgba(255,255,255,0.95)",
                 borderRadius: 16,
                 padding: "16px 24px",
                 maxWidth: 280,
                 textAlign: "center",
-                animation: "tutorialFade 2.4s ease-in-out",
+                animation: tutorialFading
+                  ? "tutorialFadeOut 2.4s ease-in-out forwards"
+                  : "tutorialFadeIn 2.4s ease-in-out",
               }}>
                 <p style={{ fontSize: 28, margin: "0 0 8px" }}>
                   {LEVEL1_TUTORIAL[tutorialStep].emoji}
