@@ -2388,6 +2388,82 @@ export class Game {
         backrest.castShadow = true; g.add(backrest);
         break;
       }
+      case "diningTable": {
+        const dtCol = f.col;
+        // Thick tabletop
+        add(new THREE.BoxGeometry(tw + 0.06, 0.07, th + 0.06), std(dtCol, 0.55), 0.46);
+        // Apron (skirt) under tabletop
+        const apronMat = std(dtCol, 0.65);
+        // Long sides
+        const apronLong = new THREE.BoxGeometry(tw - 0.08, 0.06, 0.03);
+        const aF = new THREE.Mesh(apronLong, apronMat);
+        aF.position.set(0, 0.40, -th / 2 + 0.06); aF.castShadow = true; g.add(aF);
+        const aB = new THREE.Mesh(apronLong, apronMat);
+        aB.position.set(0, 0.40, th / 2 - 0.06); aB.castShadow = true; g.add(aB);
+        // Short sides
+        const apronShort = new THREE.BoxGeometry(0.03, 0.06, th - 0.08);
+        const aL = new THREE.Mesh(apronShort, apronMat);
+        aL.position.set(-tw / 2 + 0.06, 0.40, 0); aL.castShadow = true; g.add(aL);
+        const aR = new THREE.Mesh(apronShort, apronMat);
+        aR.position.set(tw / 2 - 0.06, 0.40, 0); aR.castShadow = true; g.add(aR);
+        // 4 turned legs
+        const dtLegH = 0.37;
+        const dtLegGeo = new THREE.CylinderGeometry(0.03, 0.025, dtLegH, 6);
+        const dtLegMat = std(dtCol, 0.7);
+        for (const [lx, lz] of [
+          [-tw / 2 + 0.07, -th / 2 + 0.07],
+          [ tw / 2 - 0.07, -th / 2 + 0.07],
+          [-tw / 2 + 0.07,  th / 2 - 0.07],
+          [ tw / 2 - 0.07,  th / 2 - 0.07],
+        ]) {
+          const dtLeg = new THREE.Mesh(dtLegGeo, dtLegMat);
+          dtLeg.position.set(lx, dtLegH / 2, lz);
+          dtLeg.castShadow = true; g.add(dtLeg);
+        }
+        break;
+      }
+      case "credenza": {
+        const crCol = f.col;
+        const crWood = std(crCol, 0.65);
+        // Main body — low & wide
+        add(new THREE.BoxGeometry(tw, 0.40, th), crWood, 0.24);
+        // Top surface
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std(crCol, 0.5), 0.455);
+        // Two door panels on front face
+        const doorW = (tw - 0.08) / 2;
+        const crDoorMat = std("#5A3018", 0.7);
+        for (const dx of [-doorW / 2 - 0.01, doorW / 2 + 0.01]) {
+          const crDoor = new THREE.Mesh(
+            new THREE.BoxGeometry(doorW - 0.02, 0.30, 0.015), crDoorMat,
+          );
+          crDoor.position.set(dx, 0.22, -th / 2 - 0.005);
+          crDoor.castShadow = true; g.add(crDoor);
+        }
+        // Door knobs
+        const crKnobMat = std("#C0A040", 0.3, 0.4);
+        for (const dx of [-0.04, 0.04]) {
+          const crKnob = new THREE.Mesh(
+            new THREE.SphereGeometry(0.018, 5, 5), crKnobMat,
+          );
+          crKnob.position.set(dx, 0.24, -th / 2 - 0.02);
+          g.add(crKnob);
+        }
+        // Short tapered legs
+        const crLegH = 0.04;
+        const crLegGeo = new THREE.BoxGeometry(0.04, crLegH, 0.04);
+        const crLegMat = std(crCol, 0.7);
+        for (const [lx, lz] of [
+          [-tw / 2 + 0.05, -th / 2 + 0.04],
+          [ tw / 2 - 0.05, -th / 2 + 0.04],
+          [-tw / 2 + 0.05,  th / 2 - 0.04],
+          [ tw / 2 - 0.05,  th / 2 - 0.04],
+        ]) {
+          const crLeg = new THREE.Mesh(crLegGeo, crLegMat);
+          crLeg.position.set(lx, crLegH / 2, lz);
+          crLeg.castShadow = true; g.add(crLeg);
+        }
+        break;
+      }
       default: {
         // Generic fallback
         add(new THREE.BoxGeometry(tw, 0.45, th), new THREE.MeshToonMaterial({ color: f.col }), 0.23);

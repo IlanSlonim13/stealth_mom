@@ -57,15 +57,36 @@ export const LEVELS: LevelData[] = [
       [32,35],[33,35],[34,35],[35,35],[36,35],[37,35],[38,35],[39,35],[40,35],[41,35],[42,35],[43,35],
     ],
     // Interior wall at x=28 — single width, doorway at z=8..9
+    // Horizontal wall at z=18 — splits living room / dining room, doorway at x=14..15
     interiorWalls: [
       [28,2],[28,3],[28,4],[28,5],[28,6],[28,7],
       [28,10],[28,11],[28,12],[28,13],
       [28,14],[28,15],[28,16],[28,17],
       [28,18],[28,19],[28,20],[28,21],[28,22],[28,23],[28,24],
       [28,25],[28,26],[28,27],[28,28],[28,29],[28,30],[28,31],[28,32],[28,33],
+      // Horizontal wall at z=18 from x=2..27, doorway at x=14..15
+      [2,18],[3,18],[4,18],[5,18],[6,18],[7,18],[8,18],[9,18],[10,18],[11,18],[12,18],[13,18],
+      [16,18],[17,18],[18,18],[19,18],[20,18],[21,18],[22,18],[23,18],[24,18],[25,18],[26,18],[27,18],
     ],
     furniture: [
-      // ─── Living Room (x=2..27, z=2..33) ───
+      // ─── Dining Room (x=2..27, z=2..17) ───
+      // Large dining table — center of dining room
+      { x:8,  z:6,  w:12, h:8, label:"diningTable",   col:"#6B3A1E", shape:"diningTable"         },
+      // 8 Chairs around the table
+      { x:6,  z:6,  w:2, h:4, label:"chairL1",        col:"#6B4226", shape:"diningChair"         },
+      { x:6,  z:10, w:2, h:4, label:"chairL2",        col:"#6B4226", shape:"diningChair"         },
+      { x:20, z:6,  w:2, h:4, label:"chairR1",        col:"#6B4226", shape:"diningChair"         },
+      { x:20, z:10, w:2, h:4, label:"chairR2",        col:"#6B4226", shape:"diningChair"         },
+      { x:10, z:4,  w:4, h:2, label:"chairT1",        col:"#6B4226", shape:"diningChair"         },
+      { x:14, z:4,  w:4, h:2, label:"chairT2",        col:"#6B4226", shape:"diningChair"         },
+      { x:10, z:14, w:4, h:2, label:"chairB1",        col:"#6B4226", shape:"diningChair"         },
+      { x:14, z:14, w:4, h:2, label:"chairB2",        col:"#6B4226", shape:"diningChair"         },
+      // Credenza — against north wall
+      { x:22, z:2,  w:6, h:2, label:"credenza",       col:"#5C3A1E", shape:"credenza"            },
+      // Door at z=18 wall doorway (x=14..15)
+      { x:14, z:18, w:2, h:1, label:"diningDoor",     col:"#8B6F5C", shape:"door"                },
+
+      // ─── Living Room (x=2..27, z=19..33) ───
       // TV + dresser — right against the south-west wall
       { x:4,  z:32, w:8, h:2, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
       // Coffee table between TV and couch
@@ -78,14 +99,8 @@ export const LEVELS: LevelData[] = [
       { x:14, z:28, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
       // Lamp near couch, along west wall
       { x:2,  z:20, w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
-      // North wall — fireplace
-      { x:4,  z:2,  w:4, h:4, label:"fireplace",      col:"#8B4513", shape:"fireplace"           },
-      // North-east wall — bookcase
-      { x:24, z:2,  w:4, h:4, label:"bookcase",       col:"#8B5A2B", shape:"bookcase"            },
-      // Left wall — shelf (decoy)
-      { x:4,  z:8,  w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
-      // Round glass table (open area)
-      { x:18, z:10, w:4, h:4, label:"glassTable",     col:"#888888", shape:"roundGlassTable"     },
+      // Shelf (decoy) — along west wall in living room
+      { x:2,  z:28, w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
       // Plant — south-east corner of living room
       { x:24, z:30, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
       // Door at interior wall doorway (z=8..9, x=28)
