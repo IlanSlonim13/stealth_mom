@@ -41,6 +41,8 @@ export interface FurnitureDef {
   col: string;
   shape?: FurnitureShape;
   hasDecoy?: boolean;
+  /** Rotation around Y axis in radians */
+  rot?: number;
 }
 
 export interface RugDef {
