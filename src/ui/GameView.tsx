@@ -75,7 +75,7 @@ export function GameView() {
         onWon: (text)   => { setWinText(text); },
         onNearPickup: (itemName) => setNearPickup(itemName),
       });
-      if (level.id === 1) game.setIntroPaused(true);
+      // if (level.id === 1) game.setIntroPaused(true); // tutorial disabled for dev
       game.setIntroCompleteCallback(() => {
         setBubbleFading(true);
         setTimeout(() => setIntroActive(false), 600);
@@ -248,14 +248,13 @@ export function GameView() {
             </p>
           </div>
 
-          {/* Level 1 tutorial cards (tap-to-advance) */}
+          {/* Level 1 tutorial cards — commented out for dev iteration
           {level.id === 1 && tutorialStep < LEVEL1_TUTORIAL.length ? (
             <div
               onClick={(e) => {
                 e.stopPropagation();
-                if (tutorialFading) return; // already transitioning
+                if (tutorialFading) return;
                 setTutorialFading(true);
-                // After fade-out (2.4s) + pause (0.75s), advance to next step
                 setTimeout(() => {
                   const next = tutorialStep + 1;
                   setTutorialStep(next);
@@ -299,7 +298,8 @@ export function GameView() {
                 </p>
               </div>
             </div>
-          ) : (
+          ) : ( */}
+          {(
             /* Speech bubble — positioned above Mom's head */
             momScreenPos && (
               <div style={{
