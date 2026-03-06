@@ -25,7 +25,12 @@ export type FurnitureShape =
   | "table" | "shelf" | "fridge" | "counter" | "lamp" | "plant"
   | "toybox" | "stool" | "shoeRack" | "couch" | "tv" | "dresser"
   | "bed" | "bathtub" | "bookcase" | "desk" | "tvUnit"
-  | "coffeeTable" | "ottoman" | "laundryBasket" | "toys" | "mirror" | "clock";
+  | "coffeeTable" | "ottoman" | "laundryBasket" | "toys" | "mirror" | "clock"
+  | "pictureFrame" | "flowerVase" | "sink" | "oven" | "microwave"
+  | "nightstand" | "curtains" | "coatRack" | "sideTableGlass"
+  | "kitchenIsland" | "toiletries" | "rugDecor"
+  | "fireplace" | "toilet" | "vanity" | "roundGlassTable" | "diningChair"
+  | "window" | "door";
 
 export interface FurnitureDef {
   x: number;
@@ -86,6 +91,8 @@ export interface LevelData {
   decoys: number;
   decoyItems?: DecoyItemDef[];
   hidingSpots?: GridPos[];
+  /** Wall tiles that render as windows instead of solid panels */
+  windowWalls?: [number, number][];
   summonNpc?: SummonNpcDef;
   caughtLines: string[];
 }

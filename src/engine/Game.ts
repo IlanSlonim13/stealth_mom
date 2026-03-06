@@ -70,6 +70,11 @@ interface NpcState {
   lureTimer: number;
   // summoned chaser (Level 4)
   chasing?: boolean;
+  // limb references for walk animation
+  leftLeg?: THREE.Object3D;
+  rightLeg?: THREE.Object3D;
+  leftArm?: THREE.Object3D;
+  rightArm?: THREE.Object3D;
 }
 
 export interface GameCallbacks {
@@ -99,6 +104,10 @@ export class Game {
   private momPathIdx = 0;
   private momHead: THREE.Object3D | null = null;
   private momLower: THREE.Object3D | null = null;
+  private momLeftLeg: THREE.Object3D | null = null;
+  private momRightLeg: THREE.Object3D | null = null;
+  private momLeftArm: THREE.Object3D | null = null;
+  private momRightArm: THREE.Object3D | null = null;
 
   private goalRing!: THREE.Mesh;
   private traps: TrapState[] = [];
@@ -117,6 +126,8 @@ export class Game {
   private relaxZoomPhase = false;
   private relaxZoomElapsed = 0;
   private relaxZoomCallback: (() => void) | null = null;
+  private camBasePos = new THREE.Vector3(15, 15, 15);
+  private camTarget = new THREE.Vector3(0, 0, 0);
   private summoned = false;
   private decoyMesh: THREE.Group | null = null;
   private pickedUpItems = new Set<string>();
@@ -124,6 +135,22 @@ export class Game {
   private frame = 0;
   private animId = 0;
   private clock = new THREE.Clock();
+  private pinchStartDist = 0;
+  private pinchStartFrust = 0;
+  private frustMin = 1;
+  private frustMax = 20;
+  private panOffset = new THREE.Vector3(0, 0, 0);
+  private panStartMidX = 0;
+  private panStartMidY = 0;
+  private panStartOffset = new THREE.Vector3(0, 0, 0);
+  private pendingTapTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingTapCoords: { x: number; y: number } | null = null;
+  private wasMultiTouch = false;
+  private onDeferredTap: ((x: number, y: number) => void) | null = null;
+
+  // Animated outdoor objects
+  private outdoorCars: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number }[] = [];
+  private outdoorPeople: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D }[] = [];
 
   private level: LevelData;
   private callbacks: GameCallbacks;
@@ -156,6 +183,7 @@ export class Game {
       this.allWallSet.add(`${x},${z}`);
     });
     lvl.furniture.forEach((f) => {
+      if (f.shape === "door") return; // doors are walkable
       for (let dx = 0; dx < f.w; dx++)
         for (let dz = 0; dz < f.h; dz++)
           this.blocked.add(`${f.x + dx},${f.z + dz}`);
@@ -167,7 +195,7 @@ export class Game {
 
     // Camera — start zoomed in for intro, animate out later
     const aspect = el.clientWidth / el.clientHeight;
-    this.introFrustEnd = Math.max(W, H) * TILE_SIZE * 0.65;
+    this.introFrustEnd = Math.max(W, H) * TILE_SIZE * 0.65 / Math.min(aspect, 1);
     this.introFrustStart = this.introFrustEnd * 0.15;
     this.frust = this.introFrustStart;
     const f = this.frust;
@@ -209,13 +237,29 @@ export class Game {
     this.buildNpcs(lvl);
     this.buildHidingSpots(lvl);
 
+    // Start camera centered on Mom for intro zoom
+    const momWorldX = (lvl.playerStart.x - this.cx) * TILE_SIZE;
+    const momWorldZ = (lvl.playerStart.z - this.cz) * TILE_SIZE;
+    this.camTarget.set(momWorldX, 0, momWorldZ);
+    this.camera.position.set(15 + momWorldX, 15, 15 + momWorldZ);
+    this.camera.lookAt(this.camTarget);
+    this.camera.updateProjectionMatrix();
+
     AudioManager.preload([
       "footstep-soft", "squeak", "caught-mommy", "caught-dog",
       "caught-husband", "success", "decoy-throw", "ambient-hum",
     ]);
     AudioManager.startAmbient();
 
+    // Zoom limits: allow zooming in to ~40% of default and out to ~160%
+    this.frustMin = this.introFrustEnd * 0.4;
+    this.frustMax = this.introFrustEnd * 1.6;
+
     window.addEventListener("resize", this.onResize);
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener("touchstart", this.onTouchStart, { passive: false });
+    canvas.addEventListener("touchmove", this.onTouchMove, { passive: false });
+    canvas.addEventListener("touchend", this.onTouchEnd, { passive: false });
     this.animate();
   }
 
@@ -228,73 +272,717 @@ export class Game {
     H: number,
   ) {
     const TS = TILE_SIZE;
-    // Grass plane
-    const grassGeo = new THREE.PlaneGeometry((W + 10) * TS, (H + 10) * TS);
-    const grassMat = new THREE.MeshStandardMaterial({ color: palette.grass, roughness: 0.95 });
-    const grass = new THREE.Mesh(grassGeo, grassMat);
+    const stdMat = (col: string, rough = 0.7) =>
+      new THREE.MeshStandardMaterial({ color: col, roughness: rough });
+    const fenceMat = new THREE.MeshStandardMaterial({ color: palette.fence, roughness: 0.7 });
+
+    // ── Player's lot dimensions ──
+    // House edges in world coords
+    const houseMinX = -this.cx * TS;
+    const houseMaxX = (W - this.cx) * TS;
+    const houseMinZ = -this.cz * TS;  // north edge (back)
+    const houseMaxZ = (H - this.cz) * TS;  // south edge (front)
+    const houseW = houseMaxX - houseMinX;
+    const houseD = houseMaxZ - houseMinZ;
+
+    // Yard padding: small front yard, large back yard
+    const frontPad = 2.0 * TS;
+    const backPad = 14.0 * TS;
+    const sidePad = 2.5 * TS;
+
+    const fenceMinX = houseMinX - sidePad;
+    const fenceMaxX = houseMaxX + sidePad;
+    const fenceMinZ = houseMinZ - backPad;   // big back yard
+    const fenceMaxZ = houseMaxZ + frontPad;   // small front yard
+
+    // ── Lot dimensions for neighbor houses ──
+    const lotW = houseW * 0.85;         // neighbor lot width
+    const lotD = fenceMaxZ - fenceMinZ;  // same depth as player lot
+    const lotGap = 0.4;                  // gap between lots
+    const neighborHouseW = lotW * 0.7;
+    const neighborHouseD = houseD * 0.65;
+    const wallH = 1.5;
+
+    // ── Road position ──
+    const roadZ = fenceMaxZ + 3.5;
+    // Full street width spans all lots
+    const totalMinX = fenceMinX - (lotW + lotGap);
+    const totalMaxX = fenceMaxX + (lotW + lotGap);
+    const roadW = totalMaxX - totalMinX + 6;
+    const roadCenterX = (totalMinX + totalMaxX) / 2;
+
+    // ── Grass plane (huge, covers entire neighborhood) ──
+    const grassW = roadW + 10;
+    const grassD = lotD * 4 + 20;
+    const grass = new THREE.Mesh(
+      new THREE.PlaneGeometry(grassW, grassD),
+      new THREE.MeshStandardMaterial({ color: palette.grass, roughness: 0.95 }),
+    );
     grass.rotation.x = -Math.PI / 2;
-    grass.position.set(0, -0.01, 0);
+    grass.position.set(roadCenterX, -0.01, roadZ);
     grass.receiveShadow = true;
     this.scene.add(grass);
 
-    // White picket fence
-    const fenceMat = new THREE.MeshStandardMaterial({ color: palette.fence, roughness: 0.7 });
-    const pad = 2.5 * TS;
-    const fenceMinX = -this.cx * TS - pad;
-    const fenceMaxX = (W - this.cx) * TS + pad;
-    const fenceMinZ = -this.cz * TS - pad;
-    const fenceMaxZ = (H - this.cz) * TS + pad;
-
-    const addPost = (px: number, pz: number) => {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
-      post.position.set(px, 0.2, pz);
-      this.scene.add(post);
+    // ── Helper: build a fence rectangle ──
+    const buildFenceRect = (x1: number, z1: number, x2: number, z2: number, gateZ?: number, simple = false) => {
+      const addRail = (px: number, pz: number, rw: number, rd: number) => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(rw, 0.05, rd), fenceMat);
+        rail.position.set(px, 0.25, pz);
+        this.scene.add(rail);
+      };
+      // Rails on all 4 sides
+      addRail((x1 + x2) / 2, z1, x2 - x1, 0.06);
+      addRail((x1 + x2) / 2, z2, x2 - x1, 0.06);
+      addRail(x1, (z1 + z2) / 2, 0.06, z2 - z1);
+      addRail(x2, (z1 + z2) / 2, 0.06, z2 - z1);
+      // Posts — only for player fence (simple=false), sparse spacing
+      if (!simple) {
+        const spacing = 1.6;
+        for (let x = x1; x <= x2; x += spacing) {
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
+          post.position.set(x, 0.2, z1); this.scene.add(post);
+          const post2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
+          post2.position.set(x, 0.2, z2); this.scene.add(post2);
+        }
+        for (let z = z1; z <= z2; z += spacing) {
+          if (gateZ !== undefined && Math.abs(z - gateZ) < 0.6) continue;
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
+          post.position.set(x1, 0.2, z); this.scene.add(post);
+          const post2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), fenceMat);
+          post2.position.set(x2, 0.2, z); this.scene.add(post2);
+        }
+      }
     };
-    const addRail = (px: number, pz: number, rw: number, rh: number) => {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(rw, 0.05, rh), fenceMat);
-      rail.position.set(px, 0.25, pz);
-      this.scene.add(rail);
+
+    // Player's fence
+    buildFenceRect(fenceMinX, fenceMinZ, fenceMaxX, fenceMaxZ, fenceMaxZ);
+
+    // ── Helper: add bushes at corners ──
+    const bushColors = ["#3A7A2A", "#4A8A30", "#2A6A1A", "#5A9A38"];
+    const addBushes = (x1: number, z1: number, x2: number, z2: number) => {
+      const corners: [number, number][] = [
+        [x1 + 0.5, z1 + 0.5], [x2 - 0.5, z1 + 0.5],
+        [x1 + 0.5, z2 - 0.5], [x2 - 0.5, z2 - 0.5],
+      ];
+      corners.forEach(([bx, bz], i) => {
+        const r = 0.15 + (i % 3) * 0.04;
+        const bush = new THREE.Mesh(
+          new THREE.SphereGeometry(r, 7, 7),
+          stdMat(bushColors[i % bushColors.length], 0.9),
+        );
+        bush.position.set(bx, r, bz);
+        bush.castShadow = true;
+        this.scene.add(bush);
+      });
     };
+    addBushes(fenceMinX, fenceMinZ, fenceMaxX, fenceMaxZ);
 
-    // North & South fences
-    for (let x = fenceMinX; x <= fenceMaxX; x += 0.8) {
-      addPost(x, fenceMinZ);
-      addPost(x, fenceMaxZ);
-    }
-    addRail(0, fenceMinZ, fenceMaxX - fenceMinX, 0.06);
-    addRail(0, fenceMaxZ, fenceMaxX - fenceMinX, 0.06);
+    // ── Driveway ──
+    const dwX = fenceMaxX - 1.5;
+    const dwZ1 = (houseMaxZ + fenceMaxZ) / 2;
+    const dwZ2 = roadZ + 1.5;
+    const driveway = new THREE.Mesh(
+      new THREE.BoxGeometry(1.8, 0.02, dwZ2 - dwZ1),
+      stdMat("#B0A898", 0.9),
+    );
+    driveway.position.set(dwX, 0.005, (dwZ1 + dwZ2) / 2);
+    driveway.receiveShadow = true;
+    this.scene.add(driveway);
 
-    // East & West fences
-    for (let z = fenceMinZ; z <= fenceMaxZ; z += 0.8) {
-      addPost(fenceMinX, z);
-      addPost(fenceMaxX, z);
-    }
-    addRail(fenceMinX, 0, 0.06, fenceMaxZ - fenceMinZ);
-    addRail(fenceMaxX, 0, 0.06, fenceMaxZ - fenceMinZ);
-
-    // Bushes
-    const bushColors = ["#3A7A2A", "#4A8A30", "#2A6A1A", "#5A9A38", "#3E8A28", "#4E8430"];
-    const bushPositions: [number, number, number][] = [
-      [fenceMinX + 1, 0, fenceMinZ + 1],
-      [fenceMaxX - 1, 0, fenceMinZ + 1],
-      [fenceMinX + 1, 0, fenceMaxZ - 1],
-      [fenceMaxX - 1, 0, fenceMaxZ - 1],
-      [0, 0, fenceMinZ + 0.5],
-      [(fenceMaxX + fenceMinX) / 2, 0, fenceMaxZ - 0.5],
-    ];
-    bushPositions.forEach(([bx, , bz], i) => {
-      const r = 0.18 + (i % 3) * 0.06;
-      const bush = new THREE.Mesh(
-        new THREE.SphereGeometry(r, 7, 7),
-        new THREE.MeshStandardMaterial({ color: bushColors[i % bushColors.length], roughness: 0.9 }),
+    // ── Front road ──
+    const road = new THREE.Mesh(
+      new THREE.BoxGeometry(roadW, 0.02, 3.0),
+      stdMat("#3A3A3A", 0.95),
+    );
+    road.position.set(roadCenterX, 0.003, roadZ);
+    road.receiveShadow = true;
+    this.scene.add(road);
+    // Yellow center line
+    for (let i = 0; i < 12; i++) {
+      const dash = new THREE.Mesh(
+        new THREE.BoxGeometry(roadW / 18, 0.015, 0.06),
+        stdMat("#E8C840"),
       );
-      bush.position.set(bx, r, bz);
-      bush.castShadow = true;
-      this.scene.add(bush);
-      // Second sphere cluster
-      const b2 = bush.clone();
-      b2.position.set(bx + r * 0.9, r * 0.8, bz + r * 0.7);
-      this.scene.add(b2);
+      dash.position.set(totalMinX + (i + 0.5) * roadW / 12, 0.025, roadZ);
+      this.scene.add(dash);
+    }
+    // Sidewalks
+    for (const sideOff of [-2.0, 2.0]) {
+      const sidewalk = new THREE.Mesh(
+        new THREE.BoxGeometry(roadW + 2, 0.02, 0.8),
+        stdMat("#C8C0B4", 0.85),
+      );
+      sidewalk.position.set(roadCenterX, 0.006, roadZ + sideOff);
+      sidewalk.receiveShadow = true;
+      this.scene.add(sidewalk);
+    }
+
+    // ── Flower beds along front of player's house ──
+    const flowerColors = ["#FF6B8A", "#FFD700", "#FF4500", "#DA70D6", "#FF69B4", "#FFA500"];
+    for (let i = 0; i < 10; i++) {
+      const fx = fenceMinX + 1.5 + i * ((fenceMaxX - fenceMinX - 3) / 10);
+      const fz = fenceMaxZ - 0.7;
+      const flower = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 6, 6),
+        stdMat(flowerColors[i % flowerColors.length]),
+      );
+      flower.position.set(fx, 0.08, fz);
+      this.scene.add(flower);
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.01, 0.01, 0.08, 4),
+        stdMat("#2A7A1A"),
+      );
+      stem.position.set(fx, 0.04, fz);
+      this.scene.add(stem);
+    }
+
+    // ── Trees in the back yard (spread across larger yard) ──
+    const treePositions: [number, number][] = [
+      [fenceMinX + 1.5, fenceMinZ + 2],
+      [fenceMaxX - 1.5, fenceMinZ + 2],
+      [(fenceMinX + fenceMaxX) / 2 - 2, fenceMinZ + 1.5],
+      [fenceMinX + 2, fenceMaxZ - 1.5],
+      [fenceMaxX - 2, houseMinZ - 5],
+      [fenceMinX + 1.5, houseMinZ - 5],
+    ];
+    const addTree = (tx: number, tz: number) => {
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.1, 1.0, 6),
+        stdMat("#6B4226", 0.85),
+      );
+      trunk.position.set(tx, 0.5, tz);
+      trunk.castShadow = true;
+      this.scene.add(trunk);
+      const canopyColors = ["#2A7A1A", "#3A8A28", "#2E6E1E"];
+      for (let c = 0; c < 3; c++) {
+        const canopy = new THREE.Mesh(
+          new THREE.SphereGeometry(0.4 - c * 0.08, 8, 8),
+          stdMat(canopyColors[c], 0.9),
+        );
+        canopy.position.set(tx + (c - 1) * 0.15, 1.0 + c * 0.15, tz + (c % 2) * 0.1);
+        canopy.castShadow = true;
+        this.scene.add(canopy);
+      }
+    };
+    treePositions.forEach(([tx, tz]) => addTree(tx, tz));
+
+    // ── Mailbox ──
+    const mbX = fenceMaxX + 0.5;
+    const mbZ = fenceMaxZ + 2.0;
+    const mailPost = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.6, 5), stdMat("#5A3A20"));
+    mailPost.position.set(mbX, 0.3, mbZ);
+    this.scene.add(mailPost);
+    const mailBox = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.15), stdMat("#2244AA"));
+    mailBox.position.set(mbX, 0.65, mbZ);
+    this.scene.add(mailBox);
+    const mailFlag = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.08, 0.06), stdMat("#CC2222"));
+    mailFlag.position.set(mbX + 0.12, 0.68, mbZ);
+    this.scene.add(mailFlag);
+
+    // ── Attached Garage (right side of house, driveway leads into it) ──
+    const garageW = 2.0;
+    const garageD = houseD * 0.45;
+    const garageX = houseMaxX + garageW / 2;
+    const garageZ = houseMaxZ - garageD / 2;
+    // Garage walls
+    const garageMat = stdMat(palette.wall, 0.85);
+    const garageBody = new THREE.Mesh(
+      new THREE.BoxGeometry(garageW, 1.3, garageD),
+      garageMat,
+    );
+    garageBody.position.set(garageX, 0.65, garageZ);
+    garageBody.castShadow = true;
+    this.scene.add(garageBody);
+    // Garage roof (flat, slightly sloped look via layers)
+    for (let r = 0; r < 3; r++) {
+      const roofLayer = new THREE.Mesh(
+        new THREE.BoxGeometry(garageW + 0.3 - r * 0.15, 0.06, garageD + 0.3 - r * 0.15),
+        stdMat("#7A5A3A", 0.8),
+      );
+      roofLayer.position.set(garageX, 1.33 + r * 0.06, garageZ);
+      this.scene.add(roofLayer);
+    }
+    // Garage door (front-facing, segmented panels)
+    const garageDoorMat = stdMat("#A0907A", 0.75);
+    const garageDoor = new THREE.Mesh(
+      new THREE.BoxGeometry(garageW * 0.8, 1.0, 0.04),
+      garageDoorMat,
+    );
+    garageDoor.position.set(garageX, 0.52, garageZ + garageD / 2 + 0.02);
+    this.scene.add(garageDoor);
+    // Garage door panel lines (horizontal segments)
+    for (let i = 0; i < 4; i++) {
+      const panelLine = new THREE.Mesh(
+        new THREE.BoxGeometry(garageW * 0.78, 0.01, 0.01),
+        stdMat("#8A7A6A"),
+      );
+      panelLine.position.set(garageX, 0.15 + i * 0.25, garageZ + garageD / 2 + 0.04);
+      this.scene.add(panelLine);
+    }
+    // Garage door handle
+    const garHandle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.025, 0.025),
+      stdMat("#666666", 0.3),
+    );
+    garHandle.position.set(garageX, 0.45, garageZ + garageD / 2 + 0.05);
+    this.scene.add(garHandle);
+    // Extend driveway into garage
+    const dwExtend = new THREE.Mesh(
+      new THREE.BoxGeometry(garageW * 0.9, 0.02, garageD * 0.3),
+      stdMat("#B0A898", 0.9),
+    );
+    dwExtend.position.set(garageX, 0.005, garageZ + garageD / 2 + garageD * 0.15);
+    dwExtend.receiveShadow = true;
+    this.scene.add(dwExtend);
+
+    // ── Playhouse (back yard, left side) ──
+    const phX = fenceMinX + 2.5;
+    const phZ = fenceMinZ + 3.0;
+    const phGroup = new THREE.Group();
+    // Walls (colorful)
+    const phBody = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 0.9, 1.0),
+      stdMat("#E84040", 0.7),
+    );
+    phBody.position.y = 0.45;
+    phGroup.add(phBody);
+    // Peaked roof
+    const phRoof = new THREE.Mesh(
+      new THREE.ConeGeometry(0.95, 0.5, 4),
+      stdMat("#FFD700", 0.6),
+    );
+    phRoof.position.y = 1.15;
+    phRoof.rotation.y = Math.PI / 4;
+    phGroup.add(phRoof);
+    // Door opening (dark cutout)
+    const phDoor = new THREE.Mesh(
+      new THREE.BoxGeometry(0.35, 0.55, 0.04),
+      stdMat("#3A1A1A", 0.9),
+    );
+    phDoor.position.set(0, 0.30, 0.51);
+    phGroup.add(phDoor);
+    // Window cutout (on side)
+    const phWin = new THREE.Mesh(
+      new THREE.BoxGeometry(0.04, 0.25, 0.25),
+      new THREE.MeshStandardMaterial({
+        color: "#88CCFF", roughness: 0.1, transparent: true, opacity: 0.5,
+      }),
+    );
+    phWin.position.set(0.61, 0.50, 0);
+    phGroup.add(phWin);
+    // Window frame
+    const phWinFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.28, 0.28),
+      stdMat("#FFFFFF", 0.7),
+    );
+    phWinFrame.position.set(0.61, 0.50, 0);
+    phGroup.add(phWinFrame);
+    phGroup.position.set(phX, 0, phZ);
+    phGroup.castShadow = true;
+    this.scene.add(phGroup);
+
+    // ── BBQ Grill (back yard, near house, right-center) ──
+    const grillX = (houseMinX + houseMaxX) / 2 + 1.0;
+    const grillZ = houseMinZ - 2.0;
+    const grillGroup = new THREE.Group();
+    // Grill body
+    const grillBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 0.35, 0.4),
+      stdMat("#2A2A2A", 0.8),
+    );
+    grillBody.position.y = 0.55;
+    grillGroup.add(grillBody);
+    // Grill lid (dome)
+    const grillLid = new THREE.Mesh(
+      new THREE.SphereGeometry(0.32, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+      stdMat("#1A1A1A", 0.7),
+    );
+    grillLid.position.set(0, 0.72, 0);
+    grillGroup.add(grillLid);
+    // Handle on lid
+    const grillHandle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.015, 0.2, 5),
+      stdMat("#888888", 0.3),
+    );
+    grillHandle.rotation.x = Math.PI / 2;
+    grillHandle.position.set(0, 0.78, 0.18);
+    grillGroup.add(grillHandle);
+    // 4 legs
+    for (const [lx, lz] of [[-0.22, -0.14], [0.22, -0.14], [-0.22, 0.14], [0.22, 0.14]]) {
+      const grillLeg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.02, 0.02, 0.38, 5),
+        stdMat("#333333", 0.6),
+      );
+      grillLeg.position.set(lx, 0.19, lz);
+      grillGroup.add(grillLeg);
+    }
+    // Shelf underneath
+    const grillShelf = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.02, 0.3),
+      stdMat("#444444", 0.7),
+    );
+    grillShelf.position.set(0, 0.25, 0);
+    grillGroup.add(grillShelf);
+    grillGroup.position.set(grillX, 0, grillZ);
+    grillGroup.castShadow = true;
+    this.scene.add(grillGroup);
+
+    // ── Patio Table & Chairs (back yard, center) ──
+    const patioX = (houseMinX + houseMaxX) / 2 - 1.0;
+    const patioZ = houseMinZ - 3.5;
+    const patioGroup = new THREE.Group();
+    // Round table
+    const patioPedestal = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.10, 0.45, 6),
+      stdMat("#6A5A4A", 0.7),
+    );
+    patioPedestal.position.y = 0.23;
+    patioGroup.add(patioPedestal);
+    const patioTop = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.5, 0.5, 0.03, 12),
+      stdMat("#8B7355", 0.65),
+    );
+    patioTop.position.y = 0.47;
+    patioGroup.add(patioTop);
+    // 4 chairs around table
+    const chairAngles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+    chairAngles.forEach((angle) => {
+      const dist = 0.75;
+      const cx2 = Math.cos(angle) * dist;
+      const cz2 = Math.sin(angle) * dist;
+      // Chair seat
+      const cSeat = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.02, 0.3),
+        stdMat("#6A5A4A", 0.7),
+      );
+      cSeat.position.set(cx2, 0.30, cz2);
+      patioGroup.add(cSeat);
+      // Chair back
+      const cBack = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.25, 0.02),
+        stdMat("#6A5A4A", 0.7),
+      );
+      cBack.position.set(
+        cx2 + Math.cos(angle) * 0.14,
+        0.43,
+        cz2 + Math.sin(angle) * 0.14,
+      );
+      cBack.rotation.y = -angle + Math.PI / 2;
+      patioGroup.add(cBack);
+      // Chair legs (2 visible)
+      for (const offset of [-0.1, 0.1]) {
+        const cLeg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.012, 0.012, 0.30, 4),
+          stdMat("#5A4A3A", 0.7),
+        );
+        cLeg.position.set(cx2 + Math.cos(angle + Math.PI / 2) * offset, 0.15, cz2 + Math.sin(angle + Math.PI / 2) * offset);
+        patioGroup.add(cLeg);
+      }
+    });
+    patioGroup.position.set(patioX, 0, patioZ);
+    patioGroup.castShadow = true;
+    this.scene.add(patioGroup);
+
+    // ── Helper: build a neighbor house ──
+    const winGlassMat = new THREE.MeshStandardMaterial({
+      color: "#A8D8EA", roughness: 0.1,
+      emissive: "#88B8D8", emissiveIntensity: 0.15,
+    });
+
+    const buildNeighborHouse = (
+      hx: number, hz: number, hw: number, hd: number,
+      wallCol: string, roofCol: string, faceDir: "south" | "north",
+    ) => {
+      const g = new THREE.Group();
+      // Body
+      g.add((() => {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(hw, wallH, hd), stdMat(wallCol, 0.85));
+        b.position.y = wallH / 2;
+        return b;
+      })());
+      // Stepped roof
+      for (let r = 0; r < 4; r++) {
+        const rl = new THREE.Mesh(
+          new THREE.BoxGeometry(hw + 0.3 - r * 0.35, 0.12, hd + 0.4 - r * 0.5),
+          stdMat(roofCol, 0.8),
+        );
+        rl.position.y = wallH + 0.06 + r * 0.12;
+        g.add(rl);
+      }
+      // Front face
+      const frontOff = faceDir === "south" ? hd / 2 + 0.01 : -hd / 2 - 0.01;
+      // Door
+      const door = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.65, 0.03), stdMat("#5A3A20"));
+      door.position.set(0, 0.35, frontOff);
+      g.add(door);
+      // Front windows
+      const ws = hw * 0.25;
+      for (const wx of [-ws, ws]) {
+        const wf = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.04), stdMat("#E8E0D0", 0.7));
+        wf.position.set(wx, wallH * 0.55, frontOff);
+        g.add(wf);
+        const wg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.25, 0.02), winGlassMat);
+        wg.position.set(wx, wallH * 0.55, frontOff);
+        g.add(wg);
+      }
+      // Side windows
+      for (const sx of [-hw / 2 - 0.01, hw / 2 + 0.01]) {
+        for (let i = 0; i < 2; i++) {
+          const sw = new THREE.Mesh(
+            new THREE.BoxGeometry(0.03, 0.3, 0.35),
+            winGlassMat,
+          );
+          sw.position.set(sx, wallH * 0.55, -hd * 0.15 + i * hd * 0.35);
+          g.add(sw);
+        }
+      }
+      // Garage
+      if (Math.random() > 0.4) {
+        const gar = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 0.03), stdMat("#A0907A", 0.8));
+        gar.position.set(-ws * 1.5, 0.3, frontOff);
+        g.add(gar);
+      }
+      g.position.set(hx, 0, hz);
+      g.castShadow = true;
+      this.scene.add(g);
+    };
+
+    // ── Helper: build a neighbor lot (fence + house + yard decor) ──
+    const buildNeighborLot = (
+      lotMinX: number, lotMinZ: number, lotMaxX: number, lotMaxZ: number,
+      wallCol: string, roofCol: string, faceDir: "south" | "north",
+    ) => {
+      // Fence around the lot
+      buildFenceRect(lotMinX, lotMinZ, lotMaxX, lotMaxZ, undefined, true);
+
+      // House position within the lot
+      const hw = Math.min(neighborHouseW, (lotMaxX - lotMinX) * 0.7);
+      const hd = Math.min(neighborHouseD, (lotMaxZ - lotMinZ) * 0.4);
+      const lotCenterX = (lotMinX + lotMaxX) / 2;
+      // House sits closer to the front, leaving big back yard
+      const houseZ = faceDir === "south"
+        ? lotMaxZ - hd * 0.7  // closer to south fence (front)
+        : lotMinZ + hd * 0.7; // closer to north fence (front)
+
+      buildNeighborHouse(lotCenterX, houseZ, hw, hd, wallCol, roofCol, faceDir);
+
+      // Driveway stub from house to front fence
+      const dwFrontZ = faceDir === "south" ? lotMaxZ : lotMinZ;
+      const dwLen = Math.abs(dwFrontZ - houseZ) + 0.5;
+      const dwStub = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 0.02, dwLen),
+        stdMat("#B0A898", 0.9),
+      );
+      dwStub.position.set(lotCenterX + hw * 0.3, 0.004, (dwFrontZ + houseZ) / 2);
+      this.scene.add(dwStub);
+
+      // Tree in the back yard
+      const treeZ = faceDir === "south" ? lotMinZ + 1.5 : lotMaxZ - 1.5;
+      addTree(lotMinX + 1.5, treeZ);
+    };
+
+    // ── Side neighbors (same side of road, facing south toward the front road) ──
+    const houseColors: [string, string][] = [
+      ["#D4C4A8", "#8B4A2A"], ["#E0D0B8", "#7A5A3A"],
+      ["#C8B898", "#6A3A1A"], ["#DCC8A8", "#8A5A2A"],
+    ];
+
+    // Left neighbor
+    {
+      const lx1 = fenceMinX - (lotW + lotGap);
+      const [wc, rc] = houseColors[0];
+      buildNeighborLot(lx1, fenceMinZ, lx1 + lotW, fenceMaxZ, wc, rc, "south");
+    }
+    // Right neighbor
+    {
+      const rx1 = fenceMaxX + lotGap;
+      const [wc, rc] = houseColors[1];
+      buildNeighborLot(rx1, fenceMinZ, rx1 + lotW, fenceMaxZ, wc, rc, "south");
+    }
+
+    // ── Across-the-road houses (facing north toward the front road) ──
+    const acrossLotMinZ = roadZ + 2.5;
+    const acrossLotMaxZ = acrossLotMinZ + lotD;
+    const acrossColors: [string, string][] = [
+      ["#C0B8A0", "#6A3A1A"], ["#D8C8B0", "#7A4A2A"],
+      ["#C8C0A8", "#5A4A2A"], ["#E0D0B0", "#8A4A1A"],
+      ["#B8B0A0", "#6A4A3A"],
+    ];
+    // Houses across the road (3 lots)
+    const acrossPositions = [
+      fenceMinX - (lotW + lotGap),
+      fenceMinX + (fenceMaxX - fenceMinX - lotW) / 2,
+      fenceMaxX + lotGap,
+    ];
+    acrossPositions.forEach((ax, i) => {
+      buildNeighborLot(ax, acrossLotMinZ, ax + lotW, acrossLotMaxZ, acrossColors[i][0], acrossColors[i][1], "north");
+    });
+
+    // ── Back-to-back houses (facing north, their back yards face player's back yard) ──
+    // Shared back fence line
+    const sharedFenceZ = fenceMinZ - 0.5;
+    const backLotMinZ = sharedFenceZ - lotD;
+    const backLotMaxZ = sharedFenceZ;
+
+    // Back road (behind the back row of houses)
+    const backRoadZ = backLotMinZ - 1.5;
+    const backRoad = new THREE.Mesh(
+      new THREE.BoxGeometry(roadW, 0.02, 3.0),
+      stdMat("#3A3A3A", 0.95),
+    );
+    backRoad.position.set(roadCenterX, 0.003, backRoadZ);
+    backRoad.receiveShadow = true;
+    this.scene.add(backRoad);
+    // Yellow dashes on back road
+    for (let i = 0; i < 12; i++) {
+      const dash = new THREE.Mesh(
+        new THREE.BoxGeometry(roadW / 18, 0.015, 0.06),
+        stdMat("#E8C840"),
+      );
+      dash.position.set(totalMinX + (i + 0.5) * roadW / 12, 0.025, backRoadZ);
+      this.scene.add(dash);
+    }
+    // Back road sidewalks
+    for (const sideOff of [-2.0, 2.0]) {
+      const sw = new THREE.Mesh(
+        new THREE.BoxGeometry(roadW + 2, 0.02, 0.8),
+        stdMat("#C8C0B4", 0.85),
+      );
+      sw.position.set(roadCenterX, 0.006, backRoadZ + sideOff);
+      sw.receiveShadow = true;
+      this.scene.add(sw);
+    }
+
+    // Back neighbor lots (facing north toward the back road, 3 lots)
+    const backColors: [string, string][] = [
+      ["#C8C0B0", "#6A4A2A"], ["#D0C4B4", "#7A5A3A"],
+      ["#DCD0C0", "#8A5A2A"],
+    ];
+    acrossPositions.forEach((bx, i) => {
+      buildNeighborLot(bx, backLotMinZ, bx + lotW, backLotMaxZ, backColors[i][0], backColors[i][1], "north");
+    });
+
+    // Shared back fence (wooden, taller than picket fence)
+    const sharedFenceLen = totalMaxX - totalMinX + 4;
+    const sharedFence = new THREE.Mesh(
+      new THREE.BoxGeometry(sharedFenceLen, 0.45, 0.08),
+      stdMat("#8B7355", 0.8),
+    );
+    sharedFence.position.set(roadCenterX, 0.225, sharedFenceZ);
+    this.scene.add(sharedFence);
+    for (let x = totalMinX - 2; x <= totalMaxX + 2; x += 2.5) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), stdMat("#6B5335", 0.8));
+      post.position.set(x, 0.25, sharedFenceZ);
+      this.scene.add(post);
+    }
+
+    // ── People walking on sidewalks (animated) ──
+    const walkMinX = totalMinX - 4;
+    const walkMaxX = totalMaxX + 4;
+    const personDefs: [number, number, string, number][] = [
+      [fenceMinX - 1, roadZ - 2.0, "#3A5A8A", 0.4],
+      [fenceMinX + 3, roadZ + 2.0, "#8A3A5A", -0.35],
+      [fenceMaxX + 1, roadZ - 2.0, "#5A8A3A", 0.3],
+      [fenceMinX - 2, backRoadZ - 2.0, "#5A3A8A", -0.3],
+      [fenceMaxX + 2, backRoadZ + 2.0, "#8A5A3A", 0.35],
+    ];
+    personDefs.forEach(([px, pz, col, speed]) => {
+      const personGroup = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.06, 0.35, 6),
+        stdMat(col),
+      );
+      body.position.y = 0.3;
+      personGroup.add(body);
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 7, 7),
+        stdMat("#E8C8A8"),
+      );
+      head.position.y = 0.55;
+      personGroup.add(head);
+      const legs: THREE.Object3D[] = [];
+      for (const lx of [-0.04, 0.04]) {
+        const legMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.025, 0.025, 0.2, 5),
+          stdMat("#2A2A3A"),
+        );
+        legMesh.position.set(lx, 0.1, 0);
+        personGroup.add(legMesh);
+        legs.push(legMesh);
+      }
+      personGroup.position.set(px, 0, pz);
+      if (speed < 0) personGroup.rotation.y = Math.PI;
+      personGroup.castShadow = true;
+      this.scene.add(personGroup);
+      this.outdoorPeople.push({
+        group: personGroup, minX: walkMinX, maxX: walkMaxX,
+        speed, dir: speed > 0 ? 1 : -1,
+        leftLeg: legs[0], rightLeg: legs[1],
+      });
+    });
+
+    // ── Cars (parked + driving on both roads) ──
+    const driveMinX = totalMinX - 6;
+    const driveMaxX = totalMaxX + 6;
+    const buildCar = (cx: number, cz: number, bodyCol: string, windowCol: string): THREE.Group => {
+      const carGroup = new THREE.Group();
+      const carBody = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.25, 0.45), stdMat(bodyCol, 0.5));
+      carBody.position.y = 0.18;
+      carGroup.add(carBody);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.4), stdMat(bodyCol, 0.5));
+      cabin.position.set(-0.05, 0.37, 0);
+      carGroup.add(cabin);
+      const winMat = new THREE.MeshStandardMaterial({
+        color: windowCol, roughness: 0.1, metalness: 0.2,
+        transparent: true, opacity: 0.6,
+      });
+      for (const wz of [-0.21, 0.21]) {
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 0.01), winMat);
+        win.position.set(-0.05, 0.39, wz);
+        carGroup.add(win);
+      }
+      const wheelMat = stdMat("#1A1A1A", 0.8);
+      const wheelGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 8);
+      for (const [wx2, wz2] of [[-0.25, -0.22], [-0.25, 0.22], [0.25, -0.22], [0.25, 0.22]]) {
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+        wheel.rotation.x = Math.PI / 2;
+        wheel.position.set(wx2, 0.08, wz2);
+        carGroup.add(wheel);
+      }
+      const hlMat = new THREE.MeshStandardMaterial({
+        color: "#FFFFCC", emissive: "#FFFFAA", emissiveIntensity: 0.3,
+      });
+      for (const hz of [-0.15, 0.15]) {
+        const hl = new THREE.Mesh(new THREE.SphereGeometry(0.035, 5, 5), hlMat);
+        hl.position.set(0.41, 0.18, hz);
+        carGroup.add(hl);
+      }
+      carGroup.position.set(cx, 0, cz);
+      carGroup.castShadow = true;
+      this.scene.add(carGroup);
+      return carGroup;
+    };
+
+    // [startX, z, bodyCol, windowCol, speed]
+    const carDefs: [number, number, string, string, number][] = [
+      // Parked on player's driveway
+      [dwX, fenceMaxZ + 1, "#4A6A8A", "#C0D0E0", 0],
+      // Front road traffic
+      [fenceMinX - 2, roadZ - 0.3, "#8A2A2A", "#B8C8D8", 1.8],
+      [fenceMaxX + 3, roadZ + 0.3, "#2A5A2A", "#C0D0D0", -1.5],
+      // Back road traffic
+      [fenceMinX + 4, backRoadZ - 0.3, "#5A2A6A", "#C8C0D8", 1.4],
+      [fenceMaxX - 1, backRoadZ + 0.3, "#6A5A2A", "#D0D0C0", -1.6],
+    ];
+    carDefs.forEach(([cx, cz, bodyCol, windowCol, speed]) => {
+      const carGroup = buildCar(cx, cz, bodyCol, windowCol);
+      if (speed < 0) carGroup.rotation.y = Math.PI;
+      if (speed !== 0) {
+        this.outdoorCars.push({
+          group: carGroup, minX: driveMinX, maxX: driveMaxX,
+          speed, dir: speed > 0 ? 1 : -1,
+        });
+      }
     });
   }
 
@@ -341,10 +1029,10 @@ export class Game {
     const wallMatOpaque = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.85 });
     // Split-panel materials for walls that hide tiles behind them
     const wallMatBottom = new THREE.MeshStandardMaterial({
-      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.35, depthWrite: false,
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.55, depthWrite: false,
     });
     const wallMatTop = new THREE.MeshStandardMaterial({
-      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.1, depthWrite: false,
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.3, depthWrite: false,
     });
     const baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.9 });
 
@@ -352,12 +1040,84 @@ export class Game {
     const bottomH = 0.5;
     const topH = 1.0;
 
+    // Build set of interior wall positions for single-panel rendering
+    const interiorWallSet = new Set<string>();
+    (lvl.interiorWalls ?? []).forEach(([x, z]) => interiorWallSet.add(`${x},${z}`));
+
+    // Build set of window wall positions
+    const windowWallSet = new Set<string>();
+    (lvl.windowWalls ?? []).forEach(([x, z]) => windowWallSet.add(`${x},${z}`));
+
+    // Interior wall materials — same look as perimeter but transparent
+    const interiorWallMat = new THREE.MeshStandardMaterial({
+      color: wallColor, roughness: 0.85, transparent: true, opacity: 0.45, depthWrite: false,
+    });
+    const interiorBaseMat = new THREE.MeshStandardMaterial({
+      color: baseColor, roughness: 0.9, transparent: true, opacity: 0.5, depthWrite: false,
+    });
+
+    // Track which interior wall tiles already got a centered panel so we don't double-render
+    const interiorRendered = new Set<string>();
+
     for (const wallKey of this.allWallSet) {
       const [wx, wz] = wallKey.split(",").map(Number);
+      const wx3 = (wx - this.cx) * TS;
+      const wz3 = (wz - this.cz) * TS;
+
+      // Interior walls: render a single centered panel (like perimeter walls but transparent)
+      if (interiorWallSet.has(wallKey) && !interiorRendered.has(wallKey)) {
+        interiorRendered.add(wallKey);
+
+        // Determine wall orientation: check which axis has non-wall neighbors on both sides
+        const openEW = !this.allWallSet.has(`${wx - 1},${wz}`) && !this.allWallSet.has(`${wx + 1},${wz}`);
+
+        // If open east-west, wall separates E/W → panel faces east/west → rotY = PI/2
+        // If open north-south, wall separates N/S → panel faces north/south → rotY = 0
+        const rotY = openEW ? Math.PI / 2 : 0;
+
+        // Wall panel — same height as perimeter walls
+        const panel = new THREE.Mesh(
+          new THREE.BoxGeometry(0.92 * TS, 1.5, 0.06),
+          interiorWallMat,
+        );
+        panel.position.set(wx3, TILE_H + 0.75, wz3);
+        panel.rotation.y = rotY;
+        panel.renderOrder = 1;
+        this.scene.add(panel);
+
+        // Baseboard on both sides
+        for (const side of [-1, 1]) {
+          const base = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, 0.06, 0.07),
+            interiorBaseMat,
+          );
+          const bOff = side * 0.035;
+          if (openEW) {
+            base.position.set(wx3 + bOff, TILE_H + 0.03, wz3);
+          } else {
+            base.position.set(wx3, TILE_H + 0.03, wz3 + bOff);
+          }
+          base.rotation.y = rotY;
+          base.renderOrder = 1;
+          this.scene.add(base);
+        }
+
+        // Crown molding
+        const crown = new THREE.Mesh(
+          new THREE.BoxGeometry(0.94 * TS, 0.04, 0.08),
+          interiorBaseMat,
+        );
+        crown.position.set(wx3, TILE_H + 1.48, wz3);
+        crown.rotation.y = rotY;
+        crown.renderOrder = 1;
+        this.scene.add(crown);
+
+        continue;
+      }
+
+      // --- Perimeter walls: render face panels toward non-wall neighbors ---
 
       // Does this wall hide tiles from camera? Camera is at (+X, +Y, +Z).
-      // Tiles at lower (x + z) are further from camera → hidden behind this wall.
-      // Check north (wz-1) and west (wx-1) neighbors for non-wall tiles.
       const hidesAnyTile = [
         [wx, wz - 1],
         [wx - 1, wz],
@@ -377,8 +1137,141 @@ export class Game {
         if (nx < 0 || nx >= W || nz < 0 || nz >= H) continue;
         if (this.allWallSet.has(`${nx},${nz}`)) continue;
 
-        const wx3 = (wx - this.cx) * TS;
-        const wz3 = (wz - this.cz) * TS;
+        // --- Window wall: render window instead of solid panel ---
+        if (windowWallSet.has(wallKey)) {
+          const pw = 0.92 * TS;  // panel width
+          const wh = 1.5;        // total wall height
+          const sillY = 0.3;     // sill height from floor
+          const winH = 0.85;     // window pane height
+          const winW = pw * 0.78; // window pane width
+          const frameD = 0.04;   // frame depth (slightly in front of wall)
+          const cx3 = wx3 + ox;
+          const cz3 = wz3 + oz;
+          const transparent = hidesAnyTile;
+
+          // Wall below the window (kick panel)
+          const kickMat = transparent ? wallMatBottom : wallMatOpaque;
+          const kick = new THREE.Mesh(new THREE.BoxGeometry(pw, sillY, 0.06), kickMat);
+          kick.position.set(cx3, TILE_H + sillY / 2, cz3);
+          kick.rotation.y = rotY;
+          if (transparent) kick.renderOrder = 1;
+          this.scene.add(kick);
+
+          // Wall above the window (header)
+          const headerH = wh - sillY - winH;
+          const headerMat = transparent ? wallMatTop : wallMatOpaque;
+          const header = new THREE.Mesh(new THREE.BoxGeometry(pw, headerH, 0.06), headerMat);
+          header.position.set(cx3, TILE_H + sillY + winH + headerH / 2, cz3);
+          header.rotation.y = rotY;
+          if (transparent) header.renderOrder = 1;
+          this.scene.add(header);
+
+          // Wall strips on left and right of window
+          const stripW = (pw - winW) / 2;
+          for (const side of [-1, 1]) {
+            const strip = new THREE.Mesh(
+              new THREE.BoxGeometry(stripW, winH, 0.06),
+              transparent ? wallMatBottom : wallMatOpaque,
+            );
+            strip.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+            strip.rotation.y = rotY;
+            // Offset along the panel's local X axis
+            const localOff = side * (winW / 2 + stripW / 2);
+            strip.translateX(localOff);
+            if (transparent) strip.renderOrder = 1;
+            this.scene.add(strip);
+          }
+
+          // Glass pane
+          const glassMat = new THREE.MeshStandardMaterial({
+            color: "#B8D8F0", roughness: 0.1, metalness: 0.05,
+            transparent: true, opacity: 0.35, depthWrite: false,
+          });
+          const glass = new THREE.Mesh(new THREE.BoxGeometry(winW, winH, 0.01), glassMat);
+          glass.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+          glass.rotation.y = rotY;
+          glass.renderOrder = 2;
+          this.scene.add(glass);
+
+          // Window frame (4 pieces around the glass)
+          const frameMat = new THREE.MeshStandardMaterial({ color: "#FAFAFA", roughness: 0.6 });
+          const frameT = 0.018; // frame thickness
+          // Top frame
+          const ft = new THREE.Mesh(new THREE.BoxGeometry(winW + frameT * 2, frameT, frameD), frameMat);
+          ft.position.set(cx3, TILE_H + sillY + winH + frameT / 2, cz3);
+          ft.rotation.y = rotY;
+          ft.translateZ(-0.02);
+          this.scene.add(ft);
+          // Bottom frame (sill)
+          const sillMat = new THREE.MeshStandardMaterial({ color: "#F0F0F0", roughness: 0.5 });
+          const fb = new THREE.Mesh(new THREE.BoxGeometry(winW + frameT * 2, frameT * 1.5, frameD * 2), sillMat);
+          fb.position.set(cx3, TILE_H + sillY - frameT / 2, cz3);
+          fb.rotation.y = rotY;
+          fb.translateZ(-0.03);
+          this.scene.add(fb);
+          // Left frame
+          const fl = new THREE.Mesh(new THREE.BoxGeometry(frameT, winH, frameD), frameMat);
+          fl.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+          fl.rotation.y = rotY;
+          fl.translateX(-winW / 2 - frameT / 2);
+          fl.translateZ(-0.02);
+          this.scene.add(fl);
+          // Right frame
+          const fr = new THREE.Mesh(new THREE.BoxGeometry(frameT, winH, frameD), frameMat);
+          fr.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+          fr.rotation.y = rotY;
+          fr.translateX(winW / 2 + frameT / 2);
+          fr.translateZ(-0.02);
+          this.scene.add(fr);
+
+          // Cross/mullion pattern — vertical bar + horizontal bar
+          const mullionMat = new THREE.MeshStandardMaterial({ color: "#F5F5F5", roughness: 0.6 });
+          const mullionT = 0.012;
+          // Vertical mullion
+          const mv = new THREE.Mesh(new THREE.BoxGeometry(mullionT, winH, frameD * 0.7), mullionMat);
+          mv.position.set(cx3, TILE_H + sillY + winH / 2, cz3);
+          mv.rotation.y = rotY;
+          mv.translateZ(-0.025);
+          this.scene.add(mv);
+          // Horizontal mullion
+          const mh = new THREE.Mesh(new THREE.BoxGeometry(winW, mullionT, frameD * 0.7), mullionMat);
+          mh.position.set(cx3, TILE_H + sillY + winH * 0.55, cz3);
+          mh.rotation.y = rotY;
+          mh.translateZ(-0.025);
+          this.scene.add(mh);
+
+          // Blinds — thin horizontal strips at the top ~35% of window
+          const blindsMat = new THREE.MeshStandardMaterial({
+            color: "#F0EDE8", roughness: 0.7,
+            transparent: true, opacity: 0.7, depthWrite: false,
+          });
+          const blindCount = 6;
+          const blindZoneH = winH * 0.35;
+          const blindStartY = TILE_H + sillY + winH - blindZoneH;
+          for (let bi = 0; bi < blindCount; bi++) {
+            const by = blindStartY + (bi + 0.5) * (blindZoneH / blindCount);
+            const blind = new THREE.Mesh(
+              new THREE.BoxGeometry(winW * 0.96, 0.008, 0.015),
+              blindsMat,
+            );
+            blind.position.set(cx3, by, cz3);
+            blind.rotation.y = rotY;
+            blind.translateZ(-0.035);
+            blind.renderOrder = 3;
+            this.scene.add(blind);
+          }
+
+          // Baseboard
+          const base = new THREE.Mesh(
+            new THREE.BoxGeometry(pw, 0.06, 0.07),
+            baseMat,
+          );
+          base.position.set(cx3, TILE_H + 0.03, cz3);
+          base.rotation.y = rotY;
+          this.scene.add(base);
+
+          continue;
+        }
 
         if (hidesAnyTile) {
           // Split into two segments: semi-opaque bottom + transparent top
@@ -462,27 +1355,6 @@ export class Game {
 
       this.buildFurnitureShape(g, f, palette);
 
-      // Make upper portions of furniture semi-transparent if it hides walkable tiles
-      // Floor-level parts (seats, bases) stay opaque; only tall parts (backs, arms) go transparent
-      if (this.furnitureHidesTiles(f, lvl.grid.w, lvl.grid.h)) {
-        g.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            const geo = child.geometry;
-            if (!geo.boundingBox) geo.computeBoundingBox();
-            const meshTop = child.position.y + (geo.boundingBox?.max.y ?? 0);
-            if (meshTop > 0.35) {
-              const mat = child.material;
-              if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshToonMaterial) {
-                mat.transparent = true;
-                mat.opacity = 0.35;
-                mat.depthWrite = false;
-              }
-              child.renderOrder = 1;
-            }
-          }
-        });
-      }
-
       if (f.hasDecoy) {
         const glowGeo = new THREE.SphereGeometry(0.07, 8, 8);
         const glowMat = new THREE.MeshStandardMaterial({
@@ -500,26 +1372,6 @@ export class Game {
     }
   }
 
-  /** Check if furniture hides walkable tiles from isometric camera (+X, +Y, +Z). */
-  private furnitureHidesTiles(f: FurnitureDef, W: number, H: number): boolean {
-    // Check north edge: tiles at z = f.z - 1
-    for (let dx = 0; dx < f.w; dx++) {
-      const nx = f.x + dx;
-      const nz = f.z - 1;
-      if (nz >= 0 && nz < H && nx >= 0 && nx < W && !this.blocked.has(`${nx},${nz}`)) {
-        return true;
-      }
-    }
-    // Check west edge: tiles at x = f.x - 1
-    for (let dz = 0; dz < f.h; dz++) {
-      const nx = f.x - 1;
-      const nz = f.z + dz;
-      if (nz >= 0 && nz < H && nx >= 0 && nx < W && !this.blocked.has(`${nx},${nz}`)) {
-        return true;
-      }
-    }
-    return false;
-  }
 
   private buildFurnitureShape(
     g: THREE.Group,
@@ -661,7 +1513,7 @@ export class Game {
         const fab = std(f.col, 0.75);
         const fabDark = std(f.col + "AA", 0.8);
         add(new THREE.BoxGeometry(tw, 0.16, th), fab, 0.25); // seat
-        add(new THREE.BoxGeometry(tw, 0.3, 0.14), fabDark, 0.44).position.z = -th / 2 + 0.07; // back
+        add(new THREE.BoxGeometry(tw, 0.3, 0.14), fabDark, 0.44).position.z = th / 2 - 0.07; // back (south side, sitter faces north)
         // Arms
         add(new THREE.BoxGeometry(0.14, 0.22, th), fabDark, 0.36).position.x = -tw / 2 + 0.07;
         add(new THREE.BoxGeometry(0.14, 0.22, th), fabDark, 0.36).position.x =  tw / 2 - 0.07;
@@ -852,6 +1704,226 @@ export class Game {
         g.add(mirrorMesh);
         break;
       }
+      case "pictureFrame": {
+        // Wall-mounted picture frame with colorful canvas
+        add(new THREE.BoxGeometry(tw * 0.8, 0.45, 0.04), std("#5A3A20", 0.7), 0.55); // frame
+        const canvas = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.65, 0.35, 0.02),
+          new THREE.MeshStandardMaterial({ color: f.col, roughness: 0.6 }),
+        );
+        canvas.position.set(0, 0.55, -0.02);
+        g.add(canvas);
+        // Small highlight rectangle on the painting
+        const highlight = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.25, 0.12, 0.005), std("#FFFFFF", 0.9));
+        highlight.position.set(-tw * 0.1, 0.58, -0.035);
+        g.add(highlight);
+        break;
+      }
+      case "flowerVase": {
+        // Tall narrow table with vase and flowers
+        // Small pedestal table
+        add(new THREE.CylinderGeometry(0.06, 0.06, 0.35, 6), std("#6A4A2A", 0.7), 0.18); // stem
+        add(new THREE.CylinderGeometry(0.14, 0.14, 0.03, 8), std("#6A4A2A", 0.6), 0.37); // tabletop
+        // Vase
+        add(new THREE.CylinderGeometry(0.04, 0.06, 0.16, 8), std(f.col, 0.4, 0.1), 0.46);
+        // Flowers - three colored spheres on stems
+        const flowerCols = ["#FF6B8A", "#FFD700", "#FF4500"];
+        for (let i = 0; i < 3; i++) {
+          const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.15, 4), std("#2A8A2A", 0.8));
+          stem.position.set(Math.sin(i * 2.1) * 0.03, 0.6, Math.cos(i * 2.1) * 0.03);
+          g.add(stem);
+          const flower = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), std(flowerCols[i], 0.6));
+          flower.position.set(Math.sin(i * 2.1) * 0.04, 0.68 + i * 0.02, Math.cos(i * 2.1) * 0.04);
+          g.add(flower);
+        }
+        break;
+      }
+      case "sink": {
+        // Kitchen/bathroom sink with basin and faucet
+        add(new THREE.BoxGeometry(tw, 0.35, th), std("#8A7A6A", 0.7), 0.18); // cabinet
+        add(new THREE.BoxGeometry(tw + 0.04, 0.04, th + 0.04), std("#D0D0D0", 0.3, 0.15), 0.37); // countertop
+        // Basin (recessed)
+        const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.06, 8),
+          new THREE.MeshStandardMaterial({ color: "#E8E8E8", roughness: 0.2, metalness: 0.1 }));
+        basin.position.set(0, 0.36, 0);
+        g.add(basin);
+        // Faucet
+        const faucet = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.15, 5),
+          std("#C0C0C0", 0.2, 0.5));
+        faucet.position.set(0, 0.46, -th / 2 + 0.08);
+        g.add(faucet);
+        // Faucet spout (horizontal)
+        const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.08, 5),
+          std("#C0C0C0", 0.2, 0.5));
+        spout.rotation.x = Math.PI / 2;
+        spout.position.set(0, 0.52, -th / 2 + 0.14);
+        g.add(spout);
+        break;
+      }
+      case "oven": {
+        // Kitchen stove/oven with burners
+        add(new THREE.BoxGeometry(tw, 0.4, th), std("#333333", 0.5, 0.15), 0.2); // body
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std("#444444", 0.4, 0.2), 0.42); // cooktop
+        // Burners (4 rings)
+        const burnerMat = std("#222222", 0.3, 0.3);
+        [[-0.1, -0.08], [0.1, -0.08], [-0.1, 0.08], [0.1, 0.08]].forEach(([bx, bz]) => {
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 6, 12), burnerMat);
+          ring.rotation.x = Math.PI / 2;
+          ring.position.set(bx, 0.44, bz);
+          g.add(ring);
+        });
+        // Oven door handle
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.6, 0.015, 0.015), std("#888", 0.3, 0.4));
+        handle.position.set(0, 0.28, th / 2 + 0.01);
+        g.add(handle);
+        // Oven window
+        const ovenWindow = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.5, 0.12, 0.01),
+          new THREE.MeshStandardMaterial({ color: "#1A1A2A", roughness: 0.1, metalness: 0.2 }));
+        ovenWindow.position.set(0, 0.15, th / 2 + 0.005);
+        g.add(ovenWindow);
+        break;
+      }
+      case "microwave": {
+        // Small box on counter height
+        add(new THREE.BoxGeometry(tw * 0.8, 0.2, th * 0.8), std("#888888", 0.4, 0.15), 0.48);
+        // Door
+        const door = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.5, 0.14, 0.01),
+          new THREE.MeshStandardMaterial({ color: "#111122", roughness: 0.1 }));
+        door.position.set(-tw * 0.05, 0.48, th * 0.4 + 0.005);
+        g.add(door);
+        // Handle
+        const mh = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.1, 0.015), std("#AAAAAA", 0.3, 0.4));
+        mh.position.set(tw * 0.25, 0.48, th * 0.4 + 0.01);
+        g.add(mh);
+        // Pedestal (sits on counter)
+        add(new THREE.BoxGeometry(tw * 0.85, 0.02, th * 0.85), std("#777", 0.5), 0.37);
+        break;
+      }
+      case "nightstand": {
+        // Small bedside table with drawer and lamp area
+        add(new THREE.BoxGeometry(tw, 0.3, th), std(f.col, 0.7), 0.15); // body
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std(f.col, 0.6), 0.32); // top
+        // Drawer line
+        add(new THREE.BoxGeometry(tw + 0.005, 0.008, th + 0.005), std("#4A3010", 0.8), 0.15);
+        // Knob
+        const nKnob = new THREE.Mesh(new THREE.SphereGeometry(0.02, 5, 5), std("#C0A040", 0.4, 0.3));
+        nKnob.position.set(0, 0.15, -(th / 2) - 0.015);
+        g.add(nKnob);
+        break;
+      }
+      case "curtains": {
+        // Wall-mounted curtain rod with drapes
+        // Rod
+        add(new THREE.CylinderGeometry(0.012, 0.012, tw * 1.1, 6), std("#8A7040", 0.4, 0.3), 0.7).rotation.z = Math.PI / 2;
+        // Rod finials
+        [-tw * 0.55, tw * 0.55].forEach((fx) => {
+          const fin = new THREE.Mesh(new THREE.SphereGeometry(0.02, 5, 5), std("#8A7040", 0.4, 0.3));
+          fin.position.set(fx, 0.7, 0);
+          g.add(fin);
+        });
+        // Left drape
+        const drapeMat = std(f.col, 0.85);
+        const leftDrape = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.3, 0.55, 0.04), drapeMat);
+        leftDrape.position.set(-tw * 0.32, 0.4, 0);
+        g.add(leftDrape);
+        // Right drape
+        const rightDrape = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.3, 0.55, 0.04), drapeMat);
+        rightDrape.position.set(tw * 0.32, 0.4, 0);
+        g.add(rightDrape);
+        break;
+      }
+      case "coatRack": {
+        // Standing coat rack with hooks
+        add(new THREE.CylinderGeometry(0.1, 0.12, 0.03, 8), std("#5A3A20", 0.7), 0.015); // base
+        add(new THREE.CylinderGeometry(0.02, 0.02, 0.65, 6), std("#5A3A20", 0.7), 0.35); // pole
+        // Top cap
+        add(new THREE.SphereGeometry(0.03, 6, 6), std("#5A3A20", 0.7), 0.68);
+        // Hooks
+        for (let i = 0; i < 4; i++) {
+          const hook = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.08, 4), std("#8A7040", 0.4, 0.3));
+          hook.rotation.z = Math.PI / 3;
+          hook.position.set(Math.sin(i * Math.PI / 2) * 0.06, 0.6, Math.cos(i * Math.PI / 2) * 0.06);
+          g.add(hook);
+        }
+        // A jacket hanging
+        const jacket = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 0.06), std("#2A3A5A", 0.8));
+        jacket.position.set(0.06, 0.48, 0);
+        g.add(jacket);
+        break;
+      }
+      case "sideTableGlass": {
+        // Side table with a glass of wine/water on top
+        const col = f.col;
+        add(new THREE.BoxGeometry(tw * 0.9, 0.04, th * 0.9), std(col, 0.6), 0.32); // tabletop
+        leg(-tw / 2 + 0.06, -th / 2 + 0.06, 0.3, col);
+        leg( tw / 2 - 0.06, -th / 2 + 0.06, 0.3, col);
+        leg(-tw / 2 + 0.06,  th / 2 - 0.06, 0.3, col);
+        leg( tw / 2 - 0.06,  th / 2 - 0.06, 0.3, col);
+        // Glass
+        const glass = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.025, 0.02, 0.08, 8, 1, true),
+          new THREE.MeshStandardMaterial({ color: "#D0E8F0", roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.6 }),
+        );
+        glass.position.set(0.04, 0.38, -0.02);
+        g.add(glass);
+        // Liquid inside
+        const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.018, 0.05, 8), std("#8B1A2A", 0.5));
+        liquid.position.set(0.04, 0.37, -0.02);
+        g.add(liquid);
+        // Coaster
+        const coaster = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.008, 8), std("#5A3A1A", 0.8));
+        coaster.position.set(0.04, 0.34, -0.02);
+        g.add(coaster);
+        break;
+      }
+      case "kitchenIsland": {
+        // Kitchen island: wider counter with overhead detail
+        add(new THREE.BoxGeometry(tw, 0.38, th), std("#7A6A5A", 0.7), 0.19); // base
+        add(new THREE.BoxGeometry(tw + 0.06, 0.05, th + 0.06), std("#E8DDD0", 0.35), 0.41); // countertop
+        // Cutting board
+        const board = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.12), std("#C8A870", 0.8));
+        board.position.set(-0.05, 0.44, 0); board.rotation.y = 0.2;
+        g.add(board);
+        // Bowl
+        const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
+          std("#E0E0E0", 0.3, 0.1));
+        bowl.rotation.x = Math.PI;
+        bowl.position.set(0.1, 0.47, 0.02);
+        g.add(bowl);
+        break;
+      }
+      case "toiletries": {
+        // Small shelf / tray with bathroom items
+        add(new THREE.BoxGeometry(tw * 0.8, 0.03, th * 0.6), std("#E8E0D8", 0.6), 0.4); // tray
+        // Bottle 1 (tall)
+        add(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 6), std("#3A8ABB", 0.4), 0.48).position.x = -0.06;
+        // Bottle 2 (short round)
+        add(new THREE.CylinderGeometry(0.025, 0.025, 0.07, 6), std("#BB6A8A", 0.4), 0.45).position.x = 0.03;
+        // Soap bar
+        const soap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.04), std("#F0E0C0", 0.7));
+        soap.position.set(0.08, 0.42, 0.04);
+        g.add(soap);
+        break;
+      }
+      case "rugDecor": {
+        // Small decorative floor rug (flat)
+        const rugMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(tw, 0.015, th),
+          new THREE.MeshStandardMaterial({ color: f.col, roughness: 0.9 }),
+        );
+        rugMesh.position.y = 0.008;
+        rugMesh.receiveShadow = true;
+        g.add(rugMesh);
+        // Border stripe
+        const border = new THREE.Mesh(
+          new THREE.BoxGeometry(tw + 0.02, 0.012, th + 0.02),
+          std("#8A7060", 0.9),
+        );
+        border.position.y = 0.005;
+        border.receiveShadow = true;
+        g.add(border);
+        break;
+      }
       case "clock": {
         // Back plate / circle face
         const face = new THREE.Mesh(
@@ -879,6 +1951,303 @@ export class Game {
         mHand.position.set(0, 0.62, -0.03);
         mHand.rotation.z = -0.4;
         g.add(mHand);
+        break;
+      }
+      case "window": {
+        // Window frame with glass pane and horizontal blinds
+        const frameMat = std("#E8E0D0", 0.7);
+        // Outer frame
+        add(new THREE.BoxGeometry(tw * 0.95, 0.6, 0.05), frameMat, 0.55);
+        // Glass pane (slightly emissive sky blue)
+        const glass = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.8, 0.48, 0.02),
+          new THREE.MeshStandardMaterial({
+            color: "#A8D8EA", roughness: 0.1, metalness: 0.1,
+            transparent: true, opacity: 0.5,
+            emissive: "#88B8D8", emissiveIntensity: 0.15,
+          }),
+        );
+        glass.position.set(0, 0.55, -0.015);
+        g.add(glass);
+        // Window sill
+        add(new THREE.BoxGeometry(tw * 1.0, 0.03, 0.1), std("#D0C8B8", 0.6), 0.28);
+        // Horizontal blinds (5 slats in front of glass)
+        const blindMat = std("#F0EDE4", 0.8);
+        for (let i = 0; i < 5; i++) {
+          const slat = new THREE.Mesh(
+            new THREE.BoxGeometry(tw * 0.76, 0.015, 0.025), blindMat,
+          );
+          slat.position.set(0, 0.35 + i * 0.1, 0.02);
+          slat.rotation.x = 0.25; // tilted open
+          g.add(slat);
+        }
+        // Top valance / header
+        add(new THREE.BoxGeometry(tw * 0.95, 0.04, 0.06), frameMat, 0.82);
+        break;
+      }
+      case "door": {
+        // Door frame with partially open door
+        const doorFrameMat = std("#E8E0D0", 0.7);
+        // Frame: two vertical posts + top header
+        const postGeo = new THREE.BoxGeometry(0.04, 0.85, 0.08);
+        const leftPost = new THREE.Mesh(postGeo, doorFrameMat);
+        leftPost.position.set(-tw * 0.42, 0.43, 0);
+        g.add(leftPost);
+        const rightPost = new THREE.Mesh(postGeo, doorFrameMat);
+        rightPost.position.set(tw * 0.42, 0.43, 0);
+        g.add(rightPost);
+        // Header
+        add(new THREE.BoxGeometry(tw * 0.9, 0.05, 0.08), doorFrameMat, 0.88);
+        // Door panel (slightly ajar — rotated 25 degrees)
+        const doorPanel = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.78, 0.8, 0.04),
+          std("#8B6F5C", 0.75),
+        );
+        // Pivot from left edge: offset x by half-width, rotate, then shift
+        const doorGroup = new THREE.Group();
+        doorPanel.position.x = tw * 0.39;
+        doorGroup.add(doorPanel);
+        doorGroup.position.set(-tw * 0.39, 0.42, 0);
+        doorGroup.rotation.y = -0.4; // slightly open
+        g.add(doorGroup);
+        // Door knob
+        const knob = new THREE.Mesh(
+          new THREE.SphereGeometry(0.025, 6, 6),
+          std("#C0A040", 0.3, 0.4),
+        );
+        knob.position.set(tw * 0.65, 0.42, -0.03);
+        doorGroup.add(knob);
+        break;
+      }
+      case "fireplace": {
+        // Brick surround
+        const brickMat = std("#8B4513", 0.85);
+        // Back wall of fireplace
+        add(new THREE.BoxGeometry(tw * 0.95, 0.85, 0.08), brickMat, 0.43);
+        // Left pillar
+        const pillarL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.85, th * 0.6), brickMat);
+        pillarL.position.set(-tw * 0.42, 0.43, th * 0.15);
+        pillarL.castShadow = true; g.add(pillarL);
+        // Right pillar
+        const pillarR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.85, th * 0.6), brickMat);
+        pillarR.position.set(tw * 0.42, 0.43, th * 0.15);
+        pillarR.castShadow = true; g.add(pillarR);
+        // Mantle shelf
+        const mantle = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 1.05, 0.05, th * 0.7),
+          std("#5A3A20", 0.6),
+        );
+        mantle.position.set(0, 0.88, th * 0.1);
+        mantle.castShadow = true; g.add(mantle);
+        // Firebox opening (dark)
+        const firebox = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.55, 0.5, 0.04),
+          new THREE.MeshStandardMaterial({ color: "#1A0A0A", roughness: 0.95 }),
+        );
+        firebox.position.set(0, 0.30, th * 0.22);
+        g.add(firebox);
+        // Glowing embers
+        const emberMat = new THREE.MeshStandardMaterial({
+          color: "#FF4500", emissive: "#FF4500", emissiveIntensity: 0.8,
+          roughness: 0.9,
+        });
+        for (let i = 0; i < 5; i++) {
+          const ember = new THREE.Mesh(new THREE.SphereGeometry(0.03 + Math.random() * 0.02, 5, 5), emberMat);
+          ember.position.set(
+            -0.1 + Math.random() * 0.2,
+            0.08 + Math.random() * 0.04,
+            th * 0.2,
+          );
+          g.add(ember);
+        }
+        // Flame wisps (small orange/yellow triangles)
+        const flameMat = new THREE.MeshStandardMaterial({
+          color: "#FF8C00", emissive: "#FF6600", emissiveIntensity: 0.6,
+          transparent: true, opacity: 0.7,
+        });
+        for (let i = 0; i < 3; i++) {
+          const flame = new THREE.Mesh(
+            new THREE.ConeGeometry(0.03, 0.12 + Math.random() * 0.08, 4),
+            flameMat,
+          );
+          flame.position.set(-0.06 + i * 0.06, 0.18, th * 0.2);
+          g.add(flame);
+        }
+        // Hearth base
+        add(new THREE.BoxGeometry(tw * 1.05, 0.04, th * 0.7), brickMat, 0.02);
+        break;
+      }
+      case "toilet": {
+        const porcelain = std("#F0F0F0", 0.3);
+        // Bowl base
+        const bowl = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.10, 0.25, 8),
+          porcelain,
+        );
+        bowl.position.set(0, 0.13, 0.08);
+        bowl.castShadow = true; g.add(bowl);
+        // Bowl rim (torus)
+        const rim = new THREE.Mesh(
+          new THREE.TorusGeometry(0.11, 0.02, 6, 12),
+          porcelain,
+        );
+        rim.rotation.x = -Math.PI / 2;
+        rim.position.set(0, 0.26, 0.08);
+        g.add(rim);
+        // Seat
+        const seat = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.13, 0.13, 0.02, 12),
+          std("#EEEEEE", 0.4),
+        );
+        seat.position.set(0, 0.27, 0.08);
+        g.add(seat);
+        // Tank
+        const tank = new THREE.Mesh(
+          new THREE.BoxGeometry(0.22, 0.30, 0.12),
+          porcelain,
+        );
+        tank.position.set(0, 0.28, -0.10);
+        tank.castShadow = true; g.add(tank);
+        // Tank lid
+        const tankLid = new THREE.Mesh(
+          new THREE.BoxGeometry(0.24, 0.025, 0.14),
+          std("#E8E8E8", 0.3),
+        );
+        tankLid.position.set(0, 0.44, -0.10);
+        g.add(tankLid);
+        // Flush handle
+        const handle = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.008, 0.008, 0.06, 4),
+          std("#C0C0C0", 0.2, 0.5),
+        );
+        handle.rotation.z = Math.PI / 2;
+        handle.position.set(0.14, 0.40, -0.10);
+        g.add(handle);
+        break;
+      }
+      case "vanity": {
+        // Cabinet base
+        const cabinetMat = std(f.col || "#6A5A4A", 0.7);
+        const cab = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.9, 0.45, th * 0.7),
+          cabinetMat,
+        );
+        cab.position.set(0, 0.23, 0);
+        cab.castShadow = true; g.add(cab);
+        // Cabinet doors (lines)
+        const lineMat = std("#5A4A3A", 0.8);
+        const doorLine = new THREE.Mesh(
+          new THREE.BoxGeometry(0.01, 0.35, th * 0.65),
+          lineMat,
+        );
+        doorLine.position.set(0, 0.22, 0.01);
+        g.add(doorLine);
+        // Drawer knobs
+        for (const kx of [-0.12, 0.12]) {
+          const knobV = new THREE.Mesh(
+            new THREE.SphereGeometry(0.015, 5, 5),
+            std("#C0A060", 0.3, 0.4),
+          );
+          knobV.position.set(kx, 0.22, th * 0.36);
+          g.add(knobV);
+        }
+        // White countertop
+        const counterTop = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.95, 0.04, th * 0.75),
+          std("#F0F0F0", 0.3),
+        );
+        counterTop.position.set(0, 0.47, 0);
+        counterTop.castShadow = true; g.add(counterTop);
+        // Basin (inset oval)
+        const basin = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.10, 0.08, 0.04, 12),
+          std("#E0E8F0", 0.2),
+        );
+        basin.position.set(0, 0.46, 0.05);
+        g.add(basin);
+        // Faucet
+        const faucetBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.015, 0.12, 6),
+          std("#C0C0C0", 0.15, 0.5),
+        );
+        faucetBase.position.set(0, 0.54, -0.06);
+        g.add(faucetBase);
+        const spout = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.01, 0.01, 0.08, 4),
+          std("#C0C0C0", 0.15, 0.5),
+        );
+        spout.rotation.x = Math.PI / 2;
+        spout.position.set(0, 0.60, -0.02);
+        g.add(spout);
+        // Mirror above (wall-mounted)
+        const mirrorFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.6, 0.4, 0.03),
+          std("#4A2820", 0.6),
+        );
+        mirrorFrame.position.set(0, 0.88, -th * 0.3);
+        g.add(mirrorFrame);
+        const mirrorGlass = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.55, 0.36, 0.01),
+          new THREE.MeshStandardMaterial({
+            color: "#C8D8E8", roughness: 0.05, metalness: 0.3,
+          }),
+        );
+        mirrorGlass.position.set(0, 0.88, -th * 0.28);
+        g.add(mirrorGlass);
+        break;
+      }
+      case "roundGlassTable": {
+        // Pedestal base
+        const pedestal = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.08, 0.12, 0.35, 8),
+          std("#888888", 0.3, 0.3),
+        );
+        pedestal.position.set(0, 0.18, 0);
+        pedestal.castShadow = true; g.add(pedestal);
+        // Glass top (transparent circle)
+        const glassTop = new THREE.Mesh(
+          new THREE.CylinderGeometry(tw * 0.42, tw * 0.42, 0.02, 16),
+          new THREE.MeshStandardMaterial({
+            color: "#C8E8F0", roughness: 0.05, metalness: 0.1,
+            transparent: true, opacity: 0.4,
+          }),
+        );
+        glassTop.position.set(0, 0.37, 0);
+        g.add(glassTop);
+        // Small decorative item on top (coaster + glass)
+        const coaster = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.04, 0.04, 0.005, 8),
+          std("#5A3A20", 0.8),
+        );
+        coaster.position.set(0.05, 0.385, 0.03);
+        g.add(coaster);
+        break;
+      }
+      case "diningChair": {
+        const chairMat = std(f.col || "#6B4226", 0.7);
+        // Seat
+        const chairSeat = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.7, 0.03, th * 0.7),
+          chairMat,
+        );
+        chairSeat.position.set(0, 0.28, 0);
+        chairSeat.castShadow = true; g.add(chairSeat);
+        // 4 legs
+        const legH = 0.27;
+        const lGeo = new THREE.CylinderGeometry(0.015, 0.015, legH, 4);
+        for (const [lx, lz] of [[-0.08, -0.08], [0.08, -0.08], [-0.08, 0.08], [0.08, 0.08]]) {
+          const cLeg = new THREE.Mesh(lGeo, chairMat);
+          cLeg.position.set(lx, legH / 2, lz);
+          cLeg.castShadow = true; g.add(cLeg);
+        }
+        // Backrest
+        const backrest = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.65, 0.28, 0.025),
+          chairMat,
+        );
+        backrest.position.set(0, 0.43, -th * 0.32);
+        backrest.rotation.x = 0.05; // slight lean
+        backrest.castShadow = true; g.add(backrest);
         break;
       }
       default: {
@@ -951,79 +2320,144 @@ export class Game {
       return m;
     };
 
-    // Pants
-    const pants = addMesh(new THREE.CylinderGeometry(0.15, 0.18, 0.5, 8), outfit.pantsColor, 0.25);
-    this.momLower = pants;
+    // Legs (two separate cylinders, pivoting from hip)
+    const legMat = new THREE.MeshToonMaterial({ color: outfit.pantsColor });
+    const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.3, 6), legMat);
+    leftLeg.position.set(-0.07, 0.15, 0);
+    leftLeg.castShadow = true;
+    g.add(leftLeg);
+    this.momLeftLeg = leftLeg;
+
+    const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.3, 6), legMat);
+    rightLeg.position.set(0.07, 0.15, 0);
+    rightLeg.castShadow = true;
+    g.add(rightLeg);
+    this.momRightLeg = rightLeg;
+
+    // Shoes
+    const shoeMat = new THREE.MeshToonMaterial({ color: "#3A2A1A" });
+    const shoeL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), shoeMat);
+    shoeL.position.set(-0.07, 0.01, 0.01);
+    g.add(shoeL);
+    const shoeR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), shoeMat);
+    shoeR.position.set(0.07, 0.01, 0.01);
+    g.add(shoeR);
+
+    // Hips / waist connector
+    addMesh(new THREE.CylinderGeometry(0.13, 0.14, 0.12, 8), outfit.pantsColor, 0.36);
+    this.momLower = leftLeg; // keep for backward compat
 
     // Top — shape varies
     let headY = 0.92;
+    let shoulderY = 0.7;
     switch (outfit.topStyle) {
       case "fitted":
-        addMesh(new THREE.CylinderGeometry(0.13, 0.14, 0.25, 8), outfit.topColor, 0.63);
-        headY = 0.88; break;
+        addMesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 8), outfit.topColor, 0.57);
+        headY = 0.85; shoulderY = 0.65; break;
       case "oversized":
-        addMesh(new THREE.CylinderGeometry(0.17, 0.16, 0.35, 8), outfit.topColor, 0.68);
-        headY = 0.95; break;
+        addMesh(new THREE.CylinderGeometry(0.16, 0.14, 0.35, 8), outfit.topColor, 0.60);
+        headY = 0.90; shoulderY = 0.70; break;
       case "robe":
-        addMesh(new THREE.CylinderGeometry(0.19, 0.18, 0.42, 8), outfit.topColor, 0.71);
-        headY = 1.0; break;
+        addMesh(new THREE.CylinderGeometry(0.17, 0.15, 0.42, 8), outfit.topColor, 0.63);
+        headY = 0.95; shoulderY = 0.75; break;
       case "nightgown":
-        addMesh(new THREE.CylinderGeometry(0.14, 0.15, 0.3, 8), outfit.topColor, 0.65);
-        addMesh(new THREE.CylinderGeometry(0.16, 0.2, 0.15, 8), outfit.topColor, 0.45); // skirt
-        headY = 0.88; break;
+        addMesh(new THREE.CylinderGeometry(0.14, 0.13, 0.3, 8), outfit.topColor, 0.57);
+        addMesh(new THREE.CylinderGeometry(0.15, 0.18, 0.15, 8), outfit.topColor, 0.38); // skirt over legs
+        headY = 0.85; shoulderY = 0.65; break;
     }
+
+    // Arms (cylinders hanging from shoulders, pivoting)
+    const armMat = new THREE.MeshToonMaterial({ color: outfit.topColor });
+    const skinMat = new THREE.MeshToonMaterial({ color: "#F5D0B0" });
+
+    const leftArm = new THREE.Group();
+    const upperArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.2, 5), armMat);
+    upperArmL.position.y = -0.1;
+    leftArm.add(upperArmL);
+    const foreArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
+    foreArmL.position.y = -0.22;
+    leftArm.add(foreArmL);
+    leftArm.position.set(-0.17, shoulderY, 0);
+    leftArm.castShadow = true;
+    g.add(leftArm);
+    this.momLeftArm = leftArm;
+
+    const rightArm = new THREE.Group();
+    const upperArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.2, 5), armMat);
+    upperArmR.position.y = -0.1;
+    rightArm.add(upperArmR);
+    const foreArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
+    foreArmR.position.y = -0.22;
+    rightArm.add(foreArmR);
+    rightArm.position.set(0.17, shoulderY, 0);
+    rightArm.castShadow = true;
+    g.add(rightArm);
+    this.momRightArm = rightArm;
 
     // Head
     const head = addMesh(new THREE.SphereGeometry(0.13, 8, 8), "#F5D0B0", headY);
     this.momHead = head;
 
-    // Eyes (on +Z face so they face movement direction)
+    // Eyes — children of head so they move with head bob
     const eyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
     const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), eyeMat);
-    eyeL.position.set(-0.045, headY + 0.02, 0.11);
-    g.add(eyeL);
+    eyeL.position.set(-0.045, 0.02, 0.11);
+    head.add(eyeL);
     const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), eyeMat);
-    eyeR.position.set(0.045, headY + 0.02, 0.11);
-    g.add(eyeR);
+    eyeR.position.set(0.045, 0.02, 0.11);
+    head.add(eyeR);
 
-    // Hair
+    // Hair — children of head so they move with head bob
     const hairMat = new THREE.MeshToonMaterial({ color: "#4A2820" });
     switch (outfit.hair) {
       case "ponytail": {
-        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), hairMat);
-        bun.position.set(-0.08, headY + 0.03, 0);
-        g.add(bun);
-        const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.02, 0.2, 4), hairMat);
-        tail.position.set(-0.15, headY - 0.07, 0);
-        tail.rotation.z = Math.PI / 3;
-        g.add(tail);
+        // Hair cap on top
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.135, 8, 4), hairMat);
+        cap.scale.y = 0.45;
+        cap.position.set(0, 0.06, -0.02);
+        head.add(cap);
+        // Tie point at back of head
+        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), hairMat);
+        bun.position.set(0, -0.02, -0.12);
+        head.add(bun);
+        // Ponytail hanging down from back of head
+        const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.02, 0.3, 5), hairMat);
+        tail.position.set(0, -0.17, -0.14);
+        tail.rotation.x = 0.3;
+        head.add(tail);
         break;
       }
       case "messyBun": {
         const bun = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 6), hairMat);
-        bun.position.set(0, headY + 0.1, 0);
-        g.add(bun);
+        bun.position.set(0, 0.1, 0);
+        head.add(bun);
         const w1 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), hairMat);
-        w1.position.set(-0.12, headY + 0.04, 0);
-        g.add(w1);
+        w1.position.set(-0.12, 0.04, 0);
+        head.add(w1);
         const w2 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), hairMat);
-        w2.position.set(0.12, headY + 0.04, 0.04);
-        g.add(w2);
+        w2.position.set(0.12, 0.04, 0.04);
+        head.add(w2);
         break;
       }
       case "down": {
         const cap = new THREE.Mesh(new THREE.SphereGeometry(0.135, 8, 4), hairMat);
         cap.scale.y = 0.5;
-        cap.position.set(0, headY + 0.06, 0);
-        g.add(cap);
-        const drapeL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.25, 4), hairMat);
-        drapeL.position.set(-0.14, headY - 0.1, 0);
-        drapeL.rotation.z = 0.25;
-        g.add(drapeL);
-        const drapeR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.25, 4), hairMat);
-        drapeR.position.set(0.14, headY - 0.1, 0);
-        drapeR.rotation.z = -0.25;
-        g.add(drapeR);
+        cap.position.set(0, 0.06, -0.02);
+        head.add(cap);
+        // Back drape (longest)
+        const drapeBack = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.03, 0.3, 5), hairMat);
+        drapeBack.position.set(0, -0.12, -0.1);
+        drapeBack.rotation.x = 0.2;
+        head.add(drapeBack);
+        // Side drapes
+        const drapeL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.28, 4), hairMat);
+        drapeL.position.set(-0.12, -0.12, -0.04);
+        drapeL.rotation.z = 0.2;
+        head.add(drapeL);
+        const drapeR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.28, 4), hairMat);
+        drapeR.position.set(0.12, -0.12, -0.04);
+        drapeR.rotation.z = -0.2;
+        head.add(drapeR);
         break;
       }
     }
@@ -1135,21 +2569,22 @@ export class Game {
         zGroup.add(zSprite);
       }
 
-      // Bone thought bubble
+      // Bone thought bubble (child of group so it moves with dog)
       const dogTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
       const dogTbGroup = new THREE.Group();
       dogTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), dogTbMat));
+      // Stem dots connecting bubble to head
       const dogDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), dogTbMat);
-      dogDot1.position.set(-0.12, -0.18, 0);
+      dogDot1.position.set(-0.08, -0.18, 0);
       dogTbGroup.add(dogDot1);
-      const dogDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), dogTbMat);
-      dogDot2.position.set(-0.18, -0.28, 0);
+      const dogDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), dogTbMat);
+      dogDot2.position.set(-0.14, -0.30, 0);
       dogTbGroup.add(dogDot2);
       const boneSprite = this.makeBoneSprite();
       boneSprite.position.set(0, 0.02, 0);
       dogTbGroup.add(boneSprite);
-      dogTbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.3, 0.65, (spawnZ - this.cz) * TILE_SIZE);
-      this.scene.add(dogTbGroup);
+      dogTbGroup.position.set(0.2, 0.50, 0);
+      group.add(dogTbGroup);
 
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
@@ -1165,26 +2600,62 @@ export class Game {
 
     } else if (type === "toddler") {
       const bodyMat = new THREE.MeshToonMaterial({ color: "#6CB4EE" });
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.25, 8), bodyMat);
-      b.position.y = 0.13; b.castShadow = true;
+      const tSkinMat = new THREE.MeshToonMaterial({ color: "#F5D8C0" });
+
+      // Legs
+      const tLeftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.15, 5), bodyMat);
+      tLeftLeg.position.set(-0.05, 0.08, 0); tLeftLeg.castShadow = true;
+      group.add(tLeftLeg);
+      const tRightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.15, 5), bodyMat);
+      tRightLeg.position.set(0.05, 0.08, 0); tRightLeg.castShadow = true;
+      group.add(tRightLeg);
+
+      // Shoes
+      const tShoeMat = new THREE.MeshToonMaterial({ color: "#FF6B6B" });
+      const tShoeL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.025, 0.06), tShoeMat);
+      tShoeL.position.set(-0.05, 0.01, 0.01); group.add(tShoeL);
+      const tShoeR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.025, 0.06), tShoeMat);
+      tShoeR.position.set(0.05, 0.01, 0.01); group.add(tShoeR);
+
+      // Body (torso)
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.18, 8), bodyMat);
+      b.position.y = 0.24; b.castShadow = true;
       group.add(b);
-      const h2 = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8),
-        new THREE.MeshToonMaterial({ color: "#F5D8C0" }));
-      h2.position.y = 0.42; h2.castShadow = true;
+
+      // Arms
+      const tLeftArm = new THREE.Group();
+      const tArmUL = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 0.12, 5), bodyMat);
+      tArmUL.position.y = -0.06; tLeftArm.add(tArmUL);
+      const tHandL = new THREE.Mesh(new THREE.SphereGeometry(0.022, 5, 5), tSkinMat);
+      tHandL.position.y = -0.13; tLeftArm.add(tHandL);
+      tLeftArm.position.set(-0.12, 0.30, 0);
+      group.add(tLeftArm);
+
+      const tRightArm = new THREE.Group();
+      const tArmUR = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 0.12, 5), bodyMat);
+      tArmUR.position.y = -0.06; tRightArm.add(tArmUR);
+      const tHandR = new THREE.Mesh(new THREE.SphereGeometry(0.022, 5, 5), tSkinMat);
+      tHandR.position.y = -0.13; tRightArm.add(tHandR);
+      tRightArm.position.set(0.12, 0.30, 0);
+      group.add(tRightArm);
+
+      // Head (proportionally large for a toddler)
+      const h2 = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), tSkinMat);
+      h2.position.y = 0.50; h2.castShadow = true;
       group.add(h2);
 
       // Eyes (on +Z face so they face movement direction)
       const tEyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
       const tEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), tEyeMat);
-      tEyeL.position.set(-0.06, 0.44, 0.13);
+      tEyeL.position.set(-0.06, 0.52, 0.13);
       group.add(tEyeL);
       const tEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), tEyeMat);
-      tEyeR.position.set(0.06, 0.44, 0.13);
+      tEyeR.position.set(0.06, 0.52, 0.13);
       group.add(tEyeR);
 
       const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4),
         new THREE.MeshToonMaterial({ color: "#DEB887" }));
-      tuft.position.y = 0.58;
+      tuft.position.y = 0.66;
       group.add(tuft);
 
       const coneLen = TODDLER_CONE_RANGE * TILE_SIZE;
@@ -1199,23 +2670,23 @@ export class Game {
       coneMesh.position.set((spawnX - this.cx) * TILE_SIZE, 0.04, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(coneMesh);
 
-      // Baby talk speech bubble
+      // Baby talk speech bubble (child of group so it moves with toddler)
       const toddlerTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
       const toddlerTbGroup = new THREE.Group();
       toddlerTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), toddlerTbMat));
       const tDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), toddlerTbMat);
-      tDot1.position.set(-0.12, -0.18, 0);
+      tDot1.position.set(-0.08, -0.18, 0);
       toddlerTbGroup.add(tDot1);
-      const tDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), toddlerTbMat);
-      tDot2.position.set(-0.18, -0.28, 0);
+      const tDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), toddlerTbMat);
+      tDot2.position.set(-0.14, -0.30, 0);
       toddlerTbGroup.add(tDot2);
       const babyIdx = Math.floor(Math.random() * BABY_TALK.length);
       const babyText = this.makeTextSprite(BABY_TALK[babyIdx]);
       babyText.position.set(0, 0.04, 0);
       babyText.name = "bubbleText";
       toddlerTbGroup.add(babyText);
-      toddlerTbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.3, 0.9, (spawnZ - this.cz) * TILE_SIZE);
-      this.scene.add(toddlerTbGroup);
+      toddlerTbGroup.position.set(0.2, 0.75, 0);
+      group.add(toddlerTbGroup);
 
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
@@ -1227,27 +2698,77 @@ export class Game {
         lured: chasing, lureTarget: chasing ? { x: this.momPos.x, z: this.momPos.z } : null,
         lureTimer: 0, chasing,
         lastBubbleChange: 0, bubbleTextIdx: babyIdx,
+        leftLeg: tLeftLeg, rightLeg: tRightLeg, leftArm: tLeftArm, rightArm: tRightArm,
       };
       this.npcs.push(npc);
       return npc;
 
     } else { // husband
-      const b3 = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.55, 8),
-        new THREE.MeshToonMaterial({ color: "#4A5568" }));
-      b3.position.y = 0.28; b3.castShadow = true;
+      const hBodyMat = new THREE.MeshToonMaterial({ color: "#4A5568" });
+      const hSkinMat = new THREE.MeshToonMaterial({ color: "#E8C8A0" });
+      const hPantsMat = new THREE.MeshToonMaterial({ color: "#3A4A5A" });
+
+      // Legs
+      const hLeftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.35, 6), hPantsMat);
+      hLeftLeg.position.set(-0.08, 0.18, 0); hLeftLeg.castShadow = true;
+      group.add(hLeftLeg);
+      const hRightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.35, 6), hPantsMat);
+      hRightLeg.position.set(0.08, 0.18, 0); hRightLeg.castShadow = true;
+      group.add(hRightLeg);
+
+      // Shoes
+      const hShoeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
+      const hShoeL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.035, 0.1), hShoeMat);
+      hShoeL.position.set(-0.08, 0.01, 0.01); group.add(hShoeL);
+      const hShoeR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.035, 0.1), hShoeMat);
+      hShoeR.position.set(0.08, 0.01, 0.01); group.add(hShoeR);
+
+      // Waist
+      const hWaist = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.15, 0.1, 8), hPantsMat);
+      hWaist.position.y = 0.40; hWaist.castShadow = true;
+      group.add(hWaist);
+
+      // Torso (shirt)
+      const b3 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.3, 8), hBodyMat);
+      b3.position.y = 0.60; b3.castShadow = true;
       group.add(b3);
-      const h3 = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8),
-        new THREE.MeshToonMaterial({ color: "#E8C8A0" }));
-      h3.position.y = 0.7; h3.castShadow = true;
+
+      // Arms
+      const hLeftArm = new THREE.Group();
+      const hArmUL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.22, 5), hBodyMat);
+      hArmUL.position.y = -0.11; hLeftArm.add(hArmUL);
+      const hForeL = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.03, 0.15, 5), hSkinMat);
+      hForeL.position.y = -0.25; hLeftArm.add(hForeL);
+      hLeftArm.position.set(-0.19, 0.70, 0);
+      group.add(hLeftArm);
+
+      const hRightArm = new THREE.Group();
+      const hArmUR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.22, 5), hBodyMat);
+      hArmUR.position.y = -0.11; hRightArm.add(hArmUR);
+      const hForeR = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.03, 0.15, 5), hSkinMat);
+      hForeR.position.y = -0.25; hRightArm.add(hForeR);
+      hRightArm.position.set(0.19, 0.70, 0);
+      group.add(hRightArm);
+
+      // Head
+      const h3 = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), hSkinMat);
+      h3.position.y = 0.90; h3.castShadow = true;
       group.add(h3);
+
+      // Short hair
+      const hHairMat = new THREE.MeshToonMaterial({ color: "#3A2A1A" });
+      const hHair = new THREE.Mesh(new THREE.SphereGeometry(0.145, 8, 4), hHairMat);
+      hHair.scale.y = 0.4;
+      hHair.position.set(0, 0.97, -0.02);
+      group.add(hHair);
 
       // Eyes (on +Z face so they face movement direction)
       const hEyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
       const hEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), hEyeMat);
-      hEyeL.position.set(-0.05, 0.72, 0.12);
+      hEyeL.position.set(-0.05, 0.92, 0.12);
       group.add(hEyeL);
       const hEyeR = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), hEyeMat);
-      hEyeR.position.set(0.05, 0.72, 0.12);
+      hEyeR.position.set(0.05, 0.92, 0.12);
       group.add(hEyeR);
 
       const coneLen2 = HUSBAND_CONE_RANGE * TILE_SIZE;
@@ -1262,14 +2783,15 @@ export class Game {
       coneMesh2.position.set((spawnX - this.cx) * TILE_SIZE, 0.04, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(coneMesh2);
 
+      // Thought bubble (child of group so it moves with husband)
       const tbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
       const tbGroup = new THREE.Group();
       tbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 12), tbMat));
       const dot1 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), tbMat);
-      dot1.position.set(-0.15, -0.2, 0);
+      dot1.position.set(-0.10, -0.22, 0);
       tbGroup.add(dot1);
       const dot2 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), tbMat);
-      dot2.position.set(-0.22, -0.32, 0);
+      dot2.position.set(-0.18, -0.36, 0);
       tbGroup.add(dot2);
       const dadIdx = Math.floor(Math.random() * DAD_THOUGHTS.length);
       const initThought = def?.thought ?? DAD_THOUGHTS[dadIdx];
@@ -1277,8 +2799,8 @@ export class Game {
       dadText.position.set(0, 0.04, 0);
       dadText.name = "bubbleText";
       tbGroup.add(dadText);
-      tbGroup.position.set((spawnX - this.cx) * TILE_SIZE + 0.35, 1.2, (spawnZ - this.cz) * TILE_SIZE);
-      this.scene.add(tbGroup);
+      tbGroup.position.set(0.25, 1.25, 0);
+      group.add(tbGroup);
 
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
       this.scene.add(group);
@@ -1289,6 +2811,7 @@ export class Game {
         coneRange: HUSBAND_CONE_RANGE, coneAngle: HUSBAND_CONE_ANGLE, speed: HUSBAND_SPEED,
         lured: false, lureTarget: null, lureTimer: 0,
         lastBubbleChange: 0, bubbleTextIdx: dadIdx,
+        leftLeg: hLeftLeg, rightLeg: hRightLeg, leftArm: hLeftArm, rightArm: hRightArm,
       };
       this.npcs.push(npc);
       return npc;
@@ -1360,16 +2883,16 @@ export class Game {
 
   private makeTextSprite(text: string): THREE.Sprite {
     const canvas = document.createElement("canvas");
-    canvas.width = 256; canvas.height = 64;
+    canvas.width = 512; canvas.height = 128;
     const ctx = canvas.getContext("2d")!;
-    ctx.clearRect(0, 0, 256, 64);
+    ctx.clearRect(0, 0, 512, 128);
     ctx.fillStyle = "#333333";
-    ctx.font = "bold 14px Arial";
+    ctx.font = "bold 28px Arial";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(text, 128, 32);
+    ctx.fillText(text, 256, 64);
     const tex = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-    sprite.scale.set(1.0, 0.25, 1);
+    sprite.scale.set(0.5, 0.13, 1);
     return sprite;
   }
 
@@ -1379,6 +2902,9 @@ export class Game {
     this.animId = requestAnimationFrame(this.animate);
     const dt = Math.min(this.clock.getDelta(), 1 / 30);
     this.frame++;
+
+    // Animate outdoor objects (always, regardless of game state)
+    this.updateOutdoor(dt);
 
     if (this.caught) {
       this.renderer.render(this.scene, this.camera);
@@ -1392,6 +2918,14 @@ export class Game {
         const zoomT = Math.min(this.relaxZoomElapsed / INTRO_ZOOM_SECS, 1);
         const eased = easeOutQuad(zoomT);
         this.frust = lerp(this.introFrustEnd, this.introFrustStart, eased);
+        // Pan camera from room center to mom
+        const momWX = this.mom.position.x;
+        const momWZ = this.mom.position.z;
+        const tx = lerp(0, momWX, eased);
+        const tz = lerp(0, momWZ, eased);
+        this.camTarget.set(tx, 0, tz);
+        this.camera.position.set(15 + tx, 15, 15 + tz);
+        this.camera.lookAt(this.camTarget);
         this.updateFrustum();
         if (zoomT >= 1) {
           this.relaxZoomPhase = false;
@@ -1410,6 +2944,14 @@ export class Game {
         const zoomT = Math.min((this.introElapsed - INTRO_HOLD_SECS) / INTRO_ZOOM_SECS, 1);
         const eased = easeOutQuad(zoomT);
         this.frust = lerp(this.introFrustStart, this.introFrustEnd, eased);
+        // Pan camera from mom to room center
+        const momWX = this.mom.position.x;
+        const momWZ = this.mom.position.z;
+        const tx = lerp(momWX, 0, eased);
+        const tz = lerp(momWZ, 0, eased);
+        this.camTarget.set(tx, 0, tz);
+        this.camera.position.set(15 + tx, 15, 15 + tz);
+        this.camera.lookAt(this.camTarget);
         this.updateFrustum();
         if (zoomT >= 1) {
           this.introPhase = false;
@@ -1444,10 +2986,42 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   };
 
+  private updateOutdoor(dt: number) {
+    // Animate driving cars
+    for (const car of this.outdoorCars) {
+      car.group.position.x += car.speed * dt;
+      // Wrap around when going off-screen
+      if (car.speed > 0 && car.group.position.x > car.maxX) {
+        car.group.position.x = car.minX;
+      } else if (car.speed < 0 && car.group.position.x < car.minX) {
+        car.group.position.x = car.maxX;
+      }
+    }
+    // Animate walking people
+    const time = this.frame * 0.03;
+    for (const person of this.outdoorPeople) {
+      person.group.position.x += person.speed * dt;
+      // Wrap around
+      if (person.speed > 0 && person.group.position.x > person.maxX) {
+        person.group.position.x = person.minX;
+      } else if (person.speed < 0 && person.group.position.x < person.minX) {
+        person.group.position.x = person.maxX;
+      }
+      // Leg swing animation
+      const swing = Math.sin(time * 4) * 0.35;
+      person.leftLeg.rotation.x = swing;
+      person.rightLeg.rotation.x = -swing;
+    }
+  }
+
   private updateMom(dt: number) {
     if (!this.momPath || this.momPathIdx >= this.momPath.length) {
-      // Idle sway
+      // Idle — reset limbs and add gentle sway
       if (this.momHead) this.momHead.position.y += Math.sin(this.frame * 0.015) * 0.0005;
+      if (this.momLeftLeg) this.momLeftLeg.rotation.x *= 0.9;
+      if (this.momRightLeg) this.momRightLeg.rotation.x *= 0.9;
+      if (this.momLeftArm) this.momLeftArm.rotation.x *= 0.9;
+      if (this.momRightArm) this.momRightArm.rotation.x *= 0.9;
       return;
     }
 
@@ -1473,10 +3047,14 @@ export class Game {
       (this.momPos.z - this.cz) * TILE_SIZE,
     );
 
-    // Walking bob
+    // Walking animation — leg/arm swing + head bob
     const f = this.frame;
-    if (this.momLower) this.momLower.position.y = 0.25 + Math.sin(f * 0.3) * 0.02;
-    if (this.momHead)  this.momHead.position.y  += Math.sin(f * 0.3 + 1) * 0.0005;
+    const swing = Math.sin(f * 0.25) * 0.4;
+    if (this.momLeftLeg) this.momLeftLeg.rotation.x = swing;
+    if (this.momRightLeg) this.momRightLeg.rotation.x = -swing;
+    if (this.momLeftArm) this.momLeftArm.rotation.x = -swing * 0.7;
+    if (this.momRightArm) this.momRightArm.rotation.x = swing * 0.7;
+    if (this.momHead) this.momHead.position.y += Math.sin(f * 0.5) * 0.001;
 
     if (f % 8 === 0) AudioManager.play("footstep-soft");
 
@@ -1556,12 +3134,9 @@ export class Game {
           if (npc.circ)  npc.circ.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.02, (npc.pos.z - this.cz) * TILE_SIZE);
           if (npc.pulse) npc.pulse.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.03, (npc.pos.z - this.cz) * TILE_SIZE);
           if (npc.zGroup) npc.zGroup.position.set((npc.pos.x - this.cx) * TILE_SIZE + 0.3, 0.6, (npc.pos.z - this.cz) * TILE_SIZE);
+          // Thought bubble bobs (it's a child of group, so only adjust local Y)
           if (npc.thoughtBubble) {
-            npc.thoughtBubble.position.set(
-              (npc.pos.x - this.cx) * TILE_SIZE + 0.3,
-              0.65 + Math.sin(this.frame * 0.02) * 0.05,
-              (npc.pos.z - this.cz) * TILE_SIZE,
-            );
+            npc.thoughtBubble.position.y = 0.50 + Math.sin(this.frame * 0.02) * 0.05;
           }
         } else {
           // Sleeping Z animation
@@ -1574,9 +3149,9 @@ export class Game {
               (child as THREE.Sprite).material.opacity = 0.35 + Math.sin(t) * 0.35;
             });
           }
-          // Dog thought bubble bob
+          // Dog thought bubble bob (child of group, local Y)
           if (npc.thoughtBubble) {
-            npc.thoughtBubble.position.y = 0.65 + Math.sin(this.frame * 0.02) * 0.05;
+            npc.thoughtBubble.position.y = 0.50 + Math.sin(this.frame * 0.02) * 0.05;
           }
         }
         continue;
@@ -1628,24 +3203,50 @@ export class Game {
       }
 
       npc.group.position.set((npc.pos.x - this.cx) * TILE_SIZE, TILE_H, (npc.pos.z - this.cz) * TILE_SIZE);
+
+      // Determine if NPC is moving (for walk animation)
+      const isMoving = (npc.lured && npc.lureTarget) || (npc.patrol && npc.patrolTimer === 0);
+
       if (npc.type === "toddler") {
         npc.group.rotation.y = npc.facing;
         npc.group.rotation.z = Math.sin(this.frame * 0.15) * 0.08;
+        // Toddler waddle — fast, exaggerated swing
+        if (isMoving) {
+          const tSwing = Math.sin(this.frame * 0.3) * 0.5;
+          if (npc.leftLeg) npc.leftLeg.rotation.x = tSwing;
+          if (npc.rightLeg) npc.rightLeg.rotation.x = -tSwing;
+          if (npc.leftArm) npc.leftArm.rotation.x = -tSwing * 0.6;
+          if (npc.rightArm) npc.rightArm.rotation.x = tSwing * 0.6;
+        } else {
+          if (npc.leftLeg) npc.leftLeg.rotation.x *= 0.9;
+          if (npc.rightLeg) npc.rightLeg.rotation.x *= 0.9;
+          if (npc.leftArm) npc.leftArm.rotation.x *= 0.9;
+          if (npc.rightArm) npc.rightArm.rotation.x *= 0.9;
+        }
       } else if (npc.type === "husband") {
         npc.group.rotation.y = npc.facing;
+        // Husband walk — slower, more deliberate
+        if (isMoving) {
+          const hSwing = Math.sin(this.frame * 0.2) * 0.35;
+          if (npc.leftLeg) npc.leftLeg.rotation.x = hSwing;
+          if (npc.rightLeg) npc.rightLeg.rotation.x = -hSwing;
+          if (npc.leftArm) npc.leftArm.rotation.x = -hSwing * 0.5;
+          if (npc.rightArm) npc.rightArm.rotation.x = hSwing * 0.5;
+        } else {
+          if (npc.leftLeg) npc.leftLeg.rotation.x *= 0.9;
+          if (npc.rightLeg) npc.rightLeg.rotation.x *= 0.9;
+          if (npc.leftArm) npc.leftArm.rotation.x *= 0.9;
+          if (npc.rightArm) npc.rightArm.rotation.x *= 0.9;
+        }
       }
       if (npc.coneMesh) {
         npc.coneMesh.position.set((npc.pos.x - this.cx) * TILE_SIZE, 0.04, (npc.pos.z - this.cz) * TILE_SIZE);
         npc.coneMesh.rotation.z = -(npc.facing - Math.PI / 2);
       }
       if (npc.thoughtBubble) {
-        const bubbleY = npc.type === "toddler" ? 0.9 : 1.2;
-        const bubbleX = npc.type === "toddler" ? 0.3 : 0.35;
-        npc.thoughtBubble.position.set(
-          (npc.pos.x - this.cx) * TILE_SIZE + bubbleX,
-          bubbleY + Math.sin(this.frame * 0.02) * 0.05,
-          (npc.pos.z - this.cz) * TILE_SIZE,
-        );
+        // Bubble is child of group — just bob the local Y
+        const baseY = npc.type === "toddler" ? 0.75 : 1.25;
+        npc.thoughtBubble.position.y = baseY + Math.sin(this.frame * 0.02) * 0.05;
 
         // Cycle text every ~3-4 seconds
         const cycleInterval = npc.type === "toddler" ? 180 : 240;
@@ -1744,6 +3345,10 @@ export class Game {
     this.relaxZoomCallback = cb;
   }
 
+  setDeferredTapHandler(cb: (x: number, y: number) => void) {
+    this.onDeferredTap = cb;
+  }
+
   handleTap(clientX: number, clientY: number, decoyMode: false | "throw"): false | "thrown" {
     if (this.caught || this.won || this.introPhase) return false;
 
@@ -1820,13 +3425,108 @@ export class Game {
     return g;
   }
 
+  /** Project Mom's head into screen (CSS pixel) coordinates */
+  getMomScreenPos(): { x: number; y: number } {
+    const headWorldY = this.mom.position.y + 0.9; // approximate head height
+    const v = new THREE.Vector3(this.mom.position.x, headWorldY, this.mom.position.z);
+    v.project(this.camera);
+    const w = this.renderer.domElement.clientWidth;
+    const h = this.renderer.domElement.clientHeight;
+    return {
+      x: (v.x * 0.5 + 0.5) * w,
+      y: (-v.y * 0.5 + 0.5) * h,
+    };
+  }
+
   destroy() {
     cancelAnimationFrame(this.animId);
     window.removeEventListener("resize", this.onResize);
+    const canvas = this.renderer.domElement;
+    canvas.removeEventListener("touchstart", this.onTouchStart);
+    canvas.removeEventListener("touchmove", this.onTouchMove);
+    canvas.removeEventListener("touchend", this.onTouchEnd);
+    if (this.pendingTapTimer) clearTimeout(this.pendingTapTimer);
     if (this.decoyMesh) { this.scene.remove(this.decoyMesh); this.decoyMesh = null; }
     AudioManager.stopAmbient();
     this.renderer.dispose();
     this.element.innerHTML = "";
+  }
+
+  private onTouchStart = (e: TouchEvent) => {
+    if (e.touches.length === 1) {
+      // Store coords but don't tap yet — wait to see if a second finger arrives
+      this.pendingTapCoords = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      this.wasMultiTouch = false;
+    }
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      // Cancel any pending single-finger tap
+      if (this.pendingTapTimer) { clearTimeout(this.pendingTapTimer); this.pendingTapTimer = null; }
+      this.pendingTapCoords = null;
+      this.wasMultiTouch = true;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      this.pinchStartDist = Math.hypot(dx, dy);
+      this.pinchStartFrust = this.frust;
+      this.panStartMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      this.panStartMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      this.panStartOffset.copy(this.panOffset);
+    }
+  };
+
+  private onTouchEnd = (e: TouchEvent) => {
+    // When all fingers are lifted after a single-finger tap (no multi-touch), fire the tap
+    if (e.touches.length === 0 && this.pendingTapCoords && !this.wasMultiTouch) {
+      e.preventDefault(); // prevent synthetic click event on touch devices
+      const coords = this.pendingTapCoords;
+      this.pendingTapCoords = null;
+      this.onDeferredTap?.(coords.x, coords.y);
+    }
+    if (e.touches.length === 0) {
+      this.wasMultiTouch = false;
+      this.pendingTapCoords = null;
+    }
+  };
+
+  private onTouchMove = (e: TouchEvent) => {
+    if (e.touches.length === 2 && !this.introPhase && !this.relaxZoomPhase) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (this.pinchStartDist > 0) {
+        // Pinch zoom
+        const scale = this.pinchStartDist / dist;
+        this.frust = Math.max(this.frustMin, Math.min(this.frustMax, this.pinchStartFrust * scale));
+        this.introFrustEnd = this.frust;
+        this.updateFrustum();
+      }
+      // Pan: convert screen-space delta to isometric world-space
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const screenDx = midX - this.panStartMidX;
+      const screenDy = midY - this.panStartMidY;
+      // Convert pixels to world units: frustum covers half the screen height
+      const el = this.element;
+      const pixelsPerUnit = el.clientHeight / (2 * this.frust);
+      const worldDx = -screenDx / pixelsPerUnit;
+      const worldDy = -screenDy / pixelsPerUnit;
+      // Isometric camera right direction: (1, 0, -1) / sqrt(2)
+      // Isometric camera up direction: (-1, 2, -1) / sqrt(6), but projected on XZ: (-1, 0, -1) / sqrt(2)
+      const INV_SQRT2 = 1 / Math.SQRT2;
+      this.panOffset.x = this.panStartOffset.x + (worldDx * INV_SQRT2 + worldDy * -INV_SQRT2);
+      this.panOffset.z = this.panStartOffset.z + (worldDx * -INV_SQRT2 + worldDy * -INV_SQRT2);
+      this.applyCameraOffset();
+    }
+  };
+
+  private applyCameraOffset() {
+    const ox = this.panOffset.x;
+    const oz = this.panOffset.z;
+    this.camera.position.set(15 + ox, 15, 15 + oz);
+    this.camTarget.set(ox, 0, oz);
+    this.camera.lookAt(this.camTarget);
+    this.camera.updateProjectionMatrix();
   }
 
   private updateFrustum() {
