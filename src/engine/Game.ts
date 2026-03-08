@@ -1996,19 +1996,40 @@ export class Game {
         break;
       }
       case "kitchenIsland": {
-        // Kitchen island: wider counter with overhead detail
+        // Kitchen island: wider counter with sink
         add(new THREE.BoxGeometry(tw, 0.38, th), std("#7A6A5A", 0.7), 0.19); // base
         add(new THREE.BoxGeometry(tw + 0.06, 0.05, th + 0.06), std("#E8DDD0", 0.35), 0.41); // countertop
-        // Cutting board
+        // Sink basin (recessed rectangle)
+        const sinkRim = new THREE.Mesh(
+          new THREE.BoxGeometry(0.22, 0.02, 0.16),
+          std("#C0C0C8", 0.25, 0.3)
+        );
+        sinkRim.position.set(0.08, 0.43, 0);
+        g.add(sinkRim);
+        const sinkBasin = new THREE.Mesh(
+          new THREE.BoxGeometry(0.18, 0.04, 0.12),
+          std("#A0A0AA", 0.3, 0.2)
+        );
+        sinkBasin.position.set(0.08, 0.40, 0);
+        g.add(sinkBasin);
+        // Faucet
+        const faucetBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.012, 0.012, 0.08, 6),
+          std("#C0C0C8", 0.2, 0.5)
+        );
+        faucetBase.position.set(0.08, 0.48, -0.09);
+        g.add(faucetBase);
+        const faucetArm = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.008, 0.008, 0.06, 6),
+          std("#C0C0C8", 0.2, 0.5)
+        );
+        faucetArm.rotation.x = Math.PI / 2;
+        faucetArm.position.set(0.08, 0.52, -0.06);
+        g.add(faucetArm);
+        // Cutting board on the other side
         const board = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.12), std("#C8A870", 0.8));
-        board.position.set(-0.05, 0.44, 0); board.rotation.y = 0.2;
+        board.position.set(-0.12, 0.44, 0); board.rotation.y = 0.2;
         g.add(board);
-        // Bowl
-        const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
-          std("#E0E0E0", 0.3, 0.1));
-        bowl.rotation.x = Math.PI;
-        bowl.position.set(0.1, 0.47, 0.02);
-        g.add(bowl);
         break;
       }
       case "toiletries": {
