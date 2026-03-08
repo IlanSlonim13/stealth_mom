@@ -110,22 +110,25 @@ export const LEVELS: LevelData[] = [
       // Door at interior wall doorway — living room (z=22..23, x=28)
       { x:28, z:22, w:1, h:2, label:"doorLiving",    col:"#8B6F5C", shape:"door"                },
 
-      // ─── Hallway (x=29..41) ───
-      { x:32, z:4,  w:4, h:4, label:"hallMirror",     col:"#C0D0E0", shape:"mirror"              },
-      { x:38, z:4,  w:4, h:4, label:"hallShoeRack",   col:"#6B4226", shape:"shoeRack"            },
-      { x:38, z:12, w:4, h:4, label:"coatRack1",      col:"#5A3A20", shape:"coatRack"            },
-      { x:32, z:20, w:4, h:4, label:"table",          col:"#5C3A1E", shape:"table"               },
-      { x:38, z:28, w:4, h:4, label:"hallLamp",       col:"#D4AF37", shape:"lamp"                },
+      // ─── Kitchen (x=29..41, z=2..33) ───
+      // Fridge — NE corner, against north + east walls
+      { x:40, z:2,  w:2, h:3, label:"fridge",          col:"#D0D8E0", shape:"fridge"               },
+      // Counter with sink — along north wall
+      { x:30, z:2,  w:10, h:2, label:"counterSink",    col:"#C8B89A", shape:"counter"              },
+      // Stove/Oven — against east wall
+      { x:40, z:8,  w:2, h:4, label:"stove",           col:"#444444", shape:"oven"                 },
+      // Kitchen island — center of room
+      { x:33, z:16, w:6, h:4, label:"island",          col:"#8B6F5C", shape:"kitchenIsland"        },
     ],
     // Windows integrated into walls
     windowWalls: [
       // North wall (z=1) — living room windows
       [10,1],[11,1],[12,1],  [20,1],[21,1],[22,1],
-      // North wall — hallway window
+      // North wall — kitchen window
       [36,1],[37,1],[38,1],
       // West wall (x=1) — living room windows
       [1,12],[1,13],[1,14],  [1,22],[1,23],[1,24],
-      // East wall (x=42) — hallway windows
+      // East wall (x=42) — kitchen windows
       [42,8],[42,9],[42,10],  [42,20],[42,21],[42,22],
       // South wall (z=34) — living room windows
       [20,34],[21,34],[22,34],
