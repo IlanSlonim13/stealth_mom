@@ -111,13 +111,13 @@ export const LEVELS: LevelData[] = [
       { x:28, z:22, w:1, h:2, label:"doorLiving",    col:"#8B6F5C", shape:"door"                },
 
       // ─── Kitchen (x=29..41, z=2..33) ───
-      // Fridge — NE corner, against north + east walls
-      { x:40, z:2,  w:2, h:3, label:"fridge",          col:"#D0D8E0", shape:"fridge"               },
-      // Counter with sink — along north wall
-      { x:30, z:2,  w:10, h:2, label:"counterSink",    col:"#C8B89A", shape:"counter"              },
-      // Stove/Oven — against east wall
-      { x:40, z:8,  w:2, h:4, label:"stove",           col:"#444444", shape:"oven"                 },
-      // Kitchen island — center of room
+      // Fridge — SE corner, against south + east walls
+      { x:40, z:31, w:2, h:3, label:"fridge",          col:"#D0D8E0", shape:"fridge"               },
+      // Counter — along south wall
+      { x:30, z:32, w:10, h:2, label:"counter",        col:"#C8B89A", shape:"counter"              },
+      // Stove/Oven — against east wall, south area
+      { x:40, z:26, w:2, h:4, label:"stove",           col:"#444444", shape:"oven"                 },
+      // Kitchen island with sink — center of room
       { x:33, z:16, w:6, h:4, label:"island",          col:"#8B6F5C", shape:"kitchenIsland"        },
     ],
     // Windows integrated into walls
