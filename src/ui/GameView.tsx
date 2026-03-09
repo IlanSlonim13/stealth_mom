@@ -305,7 +305,7 @@ export function GameView() {
               <div style={{
                 position: "absolute",
                 left: momScreenPos.x,
-                top: momScreenPos.y - 20,
+                top: momScreenPos.y,
                 transform: "translate(-50%, -100%)",
                 display: "flex", flexDirection: "column", alignItems: "center",
                 animation: "bubbleIn 0.4s ease-out 0.3s both",
@@ -313,12 +313,12 @@ export function GameView() {
                 <div style={{
                   position: "relative",
                   background: "rgba(255,255,255,0.95)",
-                  borderRadius: 16,
-                  padding: "12px 20px",
-                  maxWidth: 260,
+                  borderRadius: 18,
+                  padding: "16px 26px",
+                  maxWidth: 320,
                 }}>
                   <p style={{
-                    fontFamily: "Georgia, serif", fontSize: 14,
+                    fontFamily: "Georgia, serif", fontSize: 18,
                     color: "#2A1A2A", margin: 0, textAlign: "center",
                     fontStyle: "italic", lineHeight: 1.5,
                   }}>
@@ -326,11 +326,11 @@ export function GameView() {
                   </p>
                   {/* Triangle pointer */}
                   <div style={{
-                    position: "absolute", bottom: -8, left: "50%", marginLeft: -8,
+                    position: "absolute", bottom: -10, left: "50%", marginLeft: -10,
                     width: 0, height: 0,
-                    borderLeft: "8px solid transparent",
-                    borderRight: "8px solid transparent",
-                    borderTop: "8px solid rgba(255,255,255,0.95)",
+                    borderLeft: "10px solid transparent",
+                    borderRight: "10px solid transparent",
+                    borderTop: "10px solid rgba(255,255,255,0.95)",
                   }} />
                 </div>
               </div>

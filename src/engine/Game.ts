@@ -103,6 +103,7 @@ export class Game {
   private momPath: Vec2[] | null = null;
   private momPathIdx = 0;
   private momHead: THREE.Object3D | null = null;
+  private momHeadBaseY = 0;
   private momLower: THREE.Object3D | null = null;
   private momLeftLeg: THREE.Object3D | null = null;
   private momRightLeg: THREE.Object3D | null = null;
@@ -2879,6 +2880,7 @@ export class Game {
     // Head
     const head = addMesh(new THREE.SphereGeometry(0.13, 8, 8), "#F5D0B0", headY);
     this.momHead = head;
+    this.momHeadBaseY = head.position.y;
 
     // Eyes — children of head so they move with head bob
     const eyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
@@ -3057,13 +3059,13 @@ export class Game {
       dogTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), dogTbMat));
       // Stem dots trailing down toward dog's head (head at local 0.25, 0.14, 0)
       const dogDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), dogTbMat);
-      dogDot1.position.set(0, -0.15, 0);
+      dogDot1.position.set(0, -0.15, 0);   // world ~(0.25, 0.40)
       dogTbGroup.add(dogDot1);
       const dogDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), dogTbMat);
-      dogDot2.position.set(-0.03, -0.28, 0);
+      dogDot2.position.set(-0.03, -0.28, 0);  // world ~(0.22, 0.27) — just above head
       dogTbGroup.add(dogDot2);
       const boneSprite = this.makeBoneSprite();
-      boneSprite.position.set(0, 0.02, 0);
+      boneSprite.position.set(0, 0.02, 0.05);
       dogTbGroup.add(boneSprite);
       dogTbGroup.position.set(0.25, 0.55, 0);
       group.add(dogTbGroup);
@@ -3358,8 +3360,9 @@ export class Game {
     ctx.beginPath(); ctx.arc(44, 26, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.arc(44, 38, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     const tex = new THREE.CanvasTexture(canvas);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-    sprite.scale.set(0.4, 0.4, 1);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    sprite.scale.set(0.3, 0.3, 1);
+    sprite.renderOrder = 1;
     return sprite;
   }
 
@@ -3505,7 +3508,8 @@ export class Game {
   private updateMom(dt: number) {
     if (!this.momPath || this.momPathIdx >= this.momPath.length) {
       // Idle — reset limbs and add gentle sway
-      if (this.momHead) this.momHead.position.y += Math.sin(this.frame * 0.015) * 0.0005;
+      // Gentle idle sway — use offset from base, not cumulative +=
+      if (this.momHead) this.momHead.position.y = this.momHeadBaseY + Math.sin(this.frame * 0.015) * 0.0005;
       if (this.momLeftLeg) this.momLeftLeg.rotation.x *= 0.9;
       if (this.momRightLeg) this.momRightLeg.rotation.x *= 0.9;
       if (this.momLeftArm) this.momLeftArm.rotation.x *= 0.9;
@@ -4476,17 +4480,17 @@ export class Game {
     return g;
   }
 
-  /** Project Mom's head into screen (CSS pixel) coordinates */
+  /** Project Mom's position into screen (CSS pixel) coordinates, offset upward in screen-space */
   getMomScreenPos(): { x: number; y: number } {
-    const headWorldY = this.mom.position.y + 1.05; // above head top (head center ~0.90 + radius 0.13)
-    const v = new THREE.Vector3(this.mom.position.x, headWorldY, this.mom.position.z);
+    // Project mom's base position (avoids isometric horizontal shift from world-space Y offset)
+    const v = new THREE.Vector3(this.mom.position.x, this.mom.position.y, this.mom.position.z);
     v.project(this.camera);
     const w = this.renderer.domElement.clientWidth;
     const h = this.renderer.domElement.clientHeight;
-    return {
-      x: (v.x * 0.5 + 0.5) * w,
-      y: (-v.y * 0.5 + 0.5) * h,
-    };
+    const screenX = (v.x * 0.5 + 0.5) * w;
+    const screenY = (-v.y * 0.5 + 0.5) * h;
+    // Offset upward in screen-space to position above her head
+    return { x: screenX, y: screenY - 80 };
   }
 
   destroy() {
