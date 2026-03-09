@@ -30,6 +30,8 @@ export type FurnitureShape =
   | "nightstand" | "curtains" | "coatRack" | "sideTableGlass"
   | "kitchenIsland" | "toiletries" | "rugDecor"
   | "fireplace" | "toilet" | "vanity" | "roundGlassTable" | "diningChair"
+  | "diningTable" | "credenza" | "chaiseLounge" | "chinaCredenza"
+  | "barChair" | "gasStove" | "wallCabinet" | "hangingPots"
   | "window" | "door";
 
 export interface FurnitureDef {
@@ -41,6 +43,8 @@ export interface FurnitureDef {
   col: string;
   shape?: FurnitureShape;
   hasDecoy?: boolean;
+  /** Rotation around Y axis in radians */
+  rot?: number;
 }
 
 export interface RugDef {

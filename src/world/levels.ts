@@ -2,117 +2,139 @@ import { DOG_SOUND_RADIUS } from "../utils/constants";
 import type { LevelData } from "./LevelTypes";
 
 export const LEVELS: LevelData[] = [
-  // ── Level 1 ─ "The Couch" ── Living Room (x=2..13) + Hallway (x=14..19) ── 44×36
+  // ── Level 1 ─ "The Couch" ── Dining Room + Living Room + Kitchen ── 40×36
   {
     id: 1,
     name: "The Couch",
     scene: "livingRoom",
     subtitle: "The wine is poured. The couch is calling.",
     winText: "Achievement Unlocked: 47 Seconds of Silence",
-    grid: { w: 44, h: 36 },
+    grid: { w: 40, h: 36 },
     walls: [
+      // North wall (z=0,1) — full width
       [0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[9,0],[10,0],[11,0],[12,0],[13,0],[14,0],[15,0],
       [16,0],[17,0],[18,0],[19,0],[20,0],[21,0],[22,0],[23,0],[24,0],[25,0],[26,0],[27,0],[28,0],[29,0],[30,0],[31,0],
-      [32,0],[33,0],[34,0],[35,0],[36,0],[37,0],[38,0],[39,0],[40,0],[41,0],[42,0],[43,0],
+      [32,0],[33,0],[34,0],[35,0],[36,0],[37,0],[38,0],[39,0],
       [0,1],[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],[7,1],[8,1],[9,1],[10,1],[11,1],[12,1],[13,1],[14,1],[15,1],
       [16,1],[17,1],[18,1],[19,1],[20,1],[21,1],[22,1],[23,1],[24,1],[25,1],[26,1],[27,1],[28,1],[29,1],[30,1],[31,1],
-      [32,1],[33,1],[34,1],[35,1],[36,1],[37,1],[38,1],[39,1],[40,1],[41,1],[42,1],[43,1],
-      [0,2],[1,2],[42,2],[43,2],
-      [0,3],[1,3],[42,3],[43,3],
-      [0,4],[1,4],[42,4],[43,4],
-      [0,5],[1,5],[42,5],[43,5],
-      [0,6],[1,6],[42,6],[43,6],
-      [0,7],[1,7],[42,7],[43,7],
-      [0,8],[1,8],[42,8],[43,8],
-      [0,9],[1,9],[42,9],[43,9],
-      [0,10],[1,10],[42,10],[43,10],
-      [0,11],[1,11],[42,11],[43,11],
-      [0,12],[1,12],[42,12],[43,12],
-      [0,13],[1,13],[42,13],[43,13],
-      [0,14],[1,14],[42,14],[43,14],
-      [0,15],[1,15],[42,15],[43,15],
-      [0,16],[1,16],[42,16],[43,16],
-      [0,17],[1,17],[42,17],[43,17],
-      [0,18],[1,18],[42,18],[43,18],
-      [0,19],[1,19],[42,19],[43,19],
-      [0,20],[1,20],[42,20],[43,20],
-      [0,21],[1,21],[42,21],[43,21],
-      [0,22],[1,22],[42,22],[43,22],
-      [0,23],[1,23],[42,23],[43,23],
-      [0,24],[1,24],[42,24],[43,24],
-      [0,25],[1,25],[42,25],[43,25],
-      [0,26],[1,26],[42,26],[43,26],
-      [0,27],[1,27],[42,27],[43,27],
-      [0,28],[1,28],[42,28],[43,28],
-      [0,29],[1,29],[42,29],[43,29],
-      [0,30],[1,30],[42,30],[43,30],
-      [0,31],[1,31],[42,31],[43,31],
-      [0,32],[1,32],[42,32],[43,32],
-      [0,33],[1,33],[42,33],[43,33],
+      [32,1],[33,1],[34,1],[35,1],[36,1],[37,1],[38,1],[39,1],
+      // West wall (x=0,1) — side rows z=2..33
+      [0,2],[1,2],[0,3],[1,3],[0,4],[1,4],[0,5],[1,5],[0,6],[1,6],[0,7],[1,7],
+      [0,8],[1,8],[0,9],[1,9],[0,10],[1,10],[0,11],[1,11],[0,12],[1,12],[0,13],[1,13],
+      [0,14],[1,14],[0,15],[1,15],[0,16],[1,16],[0,17],[1,17],[0,18],[1,18],[0,19],[1,19],
+      [0,20],[1,20],[0,21],[1,21],[0,22],[1,22],[0,23],[1,23],[0,24],[1,24],[0,25],[1,25],
+      [0,26],[1,26],[0,27],[1,27],[0,28],[1,28],[0,29],[1,29],[0,30],[1,30],[0,31],[1,31],
+      [0,32],[1,32],[0,33],[1,33],
+      // East wall (x=38,39) — side rows z=2..33
+      [38,2],[39,2],[38,3],[39,3],[38,4],[39,4],[38,5],[39,5],[38,6],[39,6],[38,7],[39,7],
+      [38,8],[39,8],[38,9],[39,9],[38,10],[39,10],[38,11],[39,11],[38,12],[39,12],[38,13],[39,13],
+      [38,14],[39,14],[38,15],[39,15],[38,16],[39,16],[38,17],[39,17],[38,18],[39,18],[38,19],[39,19],
+      [38,20],[39,20],[38,21],[39,21],[38,22],[39,22],[38,23],[39,23],[38,24],[39,24],[38,25],[39,25],
+      [38,26],[39,26],[38,27],[39,27],[38,28],[39,28],[38,29],[39,29],[38,30],[39,30],[38,31],[39,31],
+      [38,32],[39,32],[38,33],[39,33],
+      // South wall (z=34,35) — full width
       [0,34],[1,34],[2,34],[3,34],[4,34],[5,34],[6,34],[7,34],[8,34],[9,34],[10,34],[11,34],[12,34],[13,34],[14,34],[15,34],
       [16,34],[17,34],[18,34],[19,34],[20,34],[21,34],[22,34],[23,34],[24,34],[25,34],[26,34],[27,34],[28,34],[29,34],[30,34],[31,34],
-      [32,34],[33,34],[34,34],[35,34],[36,34],[37,34],[38,34],[39,34],[40,34],[41,34],[42,34],[43,34],
+      [32,34],[33,34],[34,34],[35,34],[36,34],[37,34],[38,34],[39,34],
       [0,35],[1,35],[2,35],[3,35],[4,35],[5,35],[6,35],[7,35],[8,35],[9,35],[10,35],[11,35],[12,35],[13,35],[14,35],[15,35],
       [16,35],[17,35],[18,35],[19,35],[20,35],[21,35],[22,35],[23,35],[24,35],[25,35],[26,35],[27,35],[28,35],[29,35],[30,35],[31,35],
-      [32,35],[33,35],[34,35],[35,35],[36,35],[37,35],[38,35],[39,35],[40,35],[41,35],[42,35],[43,35],
+      [32,35],[33,35],[34,35],[35,35],[36,35],[37,35],[38,35],[39,35],
     ],
-    // Interior wall at x=28 — single width, doorway at z=14..17
+    // Interior wall at x=28 — doorways at z=8..9 (dining→kitchen) and z=22..23 (living→kitchen)
+    // Horizontal wall at z=14 — splits dining room / living room, doorway at x=4..5
     interiorWalls: [
-      [28,2],[28,3],[28,4],[28,5],[28,6],[28,7],[28,8],[28,9],
+      [28,2],[28,3],[28,4],[28,5],[28,6],[28,7],
       [28,10],[28,11],[28,12],[28,13],
-      [28,18],[28,19],[28,20],[28,21],[28,22],[28,23],[28,24],
-      [28,25],[28,26],[28,27],[28,28],[28,29],[28,30],[28,31],[28,32],[28,33],
+      [28,14],[28,15],[28,16],[28,17],[28,18],[28,19],[28,20],[28,21],
+      [28,24],[28,25],[28,26],[28,27],[28,28],[28,29],[28,30],[28,31],[28,32],[28,33],
+      // Horizontal wall at z=14 from x=2..27, doorway at x=4..5 only
+      [2,14],[3,14],
+      [6,14],[7,14],[8,14],[9,14],[10,14],[11,14],[12,14],[13,14],[14,14],[15,14],
+      [16,14],[17,14],[18,14],[19,14],[20,14],[21,14],[22,14],[23,14],[24,14],[25,14],[26,14],[27,14],
     ],
     furniture: [
-      // ─── Living Room (x=2..27, z=2..33) ───
-      // TV wall
-      { x:10, z:10, w:8, h:4, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
-      // Coffee table between TV and couch
-      { x:12, z:14, w:4, h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"         },
-      // Couch facing TV
-      { x:10, z:16, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch"               },
-      // Side table with wine glass to the left of couch
-      { x:6,  z:16, w:4, h:4, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
-      // Ottoman to the right of couch
-      { x:20, z:16, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
-      // Lamp beside couch
-      { x:6,  z:12, w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
-      // North wall — bookcase + fireplace
-      { x:4,  z:2,  w:4, h:4, label:"bookcase",       col:"#8B5A2B", shape:"bookcase"            },
-      { x:22, z:2,  w:4, h:4, label:"fireplace",      col:"#8B4513", shape:"fireplace"           },
-      // Left wall — shelf (decoy)
-      { x:4,  z:8,  w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
-      // South corner — round glass table + accent plant
-      { x:4,  z:24, w:4, h:4, label:"glassTable",     col:"#888888", shape:"roundGlassTable"     },
-      { x:24, z:28, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
-      // Door at interior wall doorway (z=14..17, x=28)
-      { x:28, z:14, w:1, h:4, label:"door1",          col:"#8B6F5C", shape:"door"                },
+      // ─── Dining Room (x=2..27, z=2..13) ───
+      // Smaller dining table — 1 chair per short edge, 2 chairs per long edge
+      { x:10, z:5,  w:8, h:4, label:"diningTable",   col:"#6B3A1E", shape:"diningTable"          },
+      // Short-edge chairs (ends of table) — rotated to face table
+      { x:9,  z:6,  w:2, h:2, label:"chairL",   col:"#6B4226", shape:"diningChair", rot:Math.PI/2  },  // west end
+      { x:17, z:6,  w:2, h:2, label:"chairR",   col:"#6B4226", shape:"diningChair", rot:-Math.PI/2 },  // east end
+      // Long-edge chairs — 2 per side, tucked in
+      { x:12, z:4,  w:2, h:2, label:"chairT1",  col:"#6B4226", shape:"diningChair"                },  // north-left
+      { x:15, z:4,  w:2, h:2, label:"chairT2",  col:"#6B4226", shape:"diningChair"                },  // north-right
+      { x:12, z:8,  w:2, h:2, label:"chairB1",  col:"#6B4226", shape:"diningChair", rot:Math.PI    },  // south-left
+      { x:15, z:8,  w:2, h:2, label:"chairB2",  col:"#6B4226", shape:"diningChair", rot:Math.PI    },  // south-right
+      // Credenza — against north wall
+      { x:20, z:2,  w:6, h:2, label:"credenza",       col:"#5C3A1E", shape:"credenza"            },
+      // China credenza with display plates — NW wall of dining room
+      { x:2,  z:2,  w:6, h:2, label:"chinaCredenza",  col:"#5C3A1E", shape:"chinaCredenza"       },
+      // Door at z=14 wall — west doorway (x=4..5)
+      { x:4,  z:14, w:2, h:1, label:"diningDoorW",    col:"#8B6F5C", shape:"door"                },
 
-      // ─── Hallway (x=29..41) ───
-      { x:32, z:4,  w:4, h:4, label:"hallMirror",     col:"#C0D0E0", shape:"mirror"              },
-      { x:38, z:4,  w:4, h:4, label:"hallShoeRack",   col:"#6B4226", shape:"shoeRack"            },
-      { x:38, z:12, w:4, h:4, label:"coatRack1",      col:"#5A3A20", shape:"coatRack"            },
-      { x:32, z:20, w:4, h:4, label:"table",          col:"#5C3A1E", shape:"table"               },
-      { x:38, z:28, w:4, h:4, label:"hallLamp",       col:"#D4AF37", shape:"lamp"                },
+      // ─── Living Room (x=2..27, z=15..33) ───
+      // Lamp near couch, along west wall
+      { x:2,  z:16, w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
+      // Couch (rotated 180° — back faces north, sitter faces south toward TV)
+      { x:4,  z:22, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch", rot:Math.PI  },
+      // Side table with wine glass — next to couch
+      { x:13, z:22, w:2, h:2, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
+      // Coffee table between TV and couch
+      { x:6,  z:26, w:4, h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"         },
+      // Ottoman to the right of coffee table area
+      { x:14, z:26, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
+      // Shelf (decoy) — along west wall
+      { x:2,  z:26, w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
+      // TV — against south wall
+      { x:4,  z:32, w:8, h:2, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
+      // Plant — SE area of living room
+      { x:22, z:30, w:4, h:4, label:"plant1",         col:"#4A7A4A", shape:"plant"               },
+      // Door at interior wall doorway — dining room (z=8..9, x=28)
+      { x:28, z:8, w:1, h:2, label:"door1",          col:"#8B6F5C", shape:"door"                },
+      // Door at interior wall doorway — living room (z=22..23, x=28)
+      { x:28, z:22, w:1, h:2, label:"doorLiving",    col:"#8B6F5C", shape:"door"                },
+
+      // ─── Kitchen (x=29..37, z=2..33) ───
+      // Fridge — SE corner, against south + east walls
+      { x:36, z:31, w:2, h:3, label:"fridge",          col:"#D0D8E0", shape:"fridge"               },
+      // Counter — along south wall
+      { x:29, z:32, w:7, h:2, label:"counter",         col:"#C8B89A", shape:"counter"              },
+      // Gas stove — against east wall
+      { x:36, z:26, w:2, h:4, label:"stove",           col:"#444444", shape:"gasStove"             },
+      // Kitchen island with sink — center of room
+      { x:31, z:10, w:6, h:4, label:"island",          col:"#8B6F5C", shape:"kitchenIsland"        },
+      // Bar chairs around island
+      { x:30, z:11, w:1, h:2, label:"barChairL",       col:"#555555", shape:"barChair", rot:-Math.PI/2 },
+      { x:37, z:11, w:1, h:2, label:"barChairR",       col:"#555555", shape:"barChair", rot:Math.PI/2  },
+      { x:33, z:9,  w:2, h:1, label:"barChairT",       col:"#555555", shape:"barChair"                 },
+      { x:33, z:14, w:2, h:1, label:"barChairB",       col:"#555555", shape:"barChair", rot:Math.PI     },
+      // Wall cabinets — along north wall
+      { x:29, z:2,  w:8, h:1, label:"cabinetN",        col:"#E8DDD0", shape:"wallCabinet"          },
+      // Wall cabinets — along east wall
+      { x:37, z:4,  w:1, h:6, label:"cabinetE1",       col:"#E8DDD0", shape:"wallCabinet"          },
+      { x:37, z:18, w:1, h:6, label:"cabinetE2",       col:"#E8DDD0", shape:"wallCabinet"          },
+      // Wall cabinets — along south wall (above counter)
+      { x:29, z:33, w:7, h:1, label:"cabinetS",        col:"#E8DDD0", shape:"wallCabinet"          },
+      // Hanging pots and pans — above the island
+      { x:32, z:11, w:4, h:2, label:"hangingPots",     col:"#3A3A3A", shape:"hangingPots"          },
     ],
     // Windows integrated into walls
     windowWalls: [
-      // North wall (z=1) — living room windows
+      // North wall (z=1) — dining room windows
       [10,1],[11,1],[12,1],  [20,1],[21,1],[22,1],
-      // North wall — hallway window
-      [36,1],[37,1],[38,1],
-      // West wall (x=1) — living room windows
-      [1,12],[1,13],[1,14],  [1,22],[1,23],[1,24],
-      // East wall (x=42) — hallway windows
-      [42,8],[42,9],[42,10],  [42,20],[42,21],[42,22],
+      // North wall — kitchen window
+      [33,1],[34,1],[35,1],
+      // West wall (x=1) — windows
+      [1,8],[1,9],[1,10],  [1,22],[1,23],[1,24],
+      // East wall (x=38) — kitchen windows
+      [38,8],[38,9],[38,10],  [38,20],[38,21],[38,22],
       // South wall (z=34) — living room windows
-      [10,34],[11,34],[12,34],  [20,34],[21,34],[22,34],
+      [18,34],[19,34],[20,34],
     ],
-    rug: { x:8, z:10, w:14, h:10 },
-    playerStart: { x:36, z:24 },
-    goal: { x:16, z:20, label:"The Couch" },
+    rug: { x:4, z:22, w:10, h:10 },
+    playerStart: { x:33, z:20 },
+    goal: { x:12, z:24, label:"The Couch" },
     npcs: [
-      { type:"dog", x:36, z:8, radius: DOG_SOUND_RADIUS },
+      { type:"dog", x:22, z:24, radius: DOG_SOUND_RADIUS },
     ],
     traps: [],
     decoys: 1,

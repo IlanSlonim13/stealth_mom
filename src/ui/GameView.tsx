@@ -5,6 +5,7 @@ import { useGameStore } from "../state/gameStore";
 import { LEVELS } from "../world/levels";
 import { INTRO_QUOTES } from "../world/introData";
 import { RELAX_DATA } from "../world/relaxData";
+import { LEVEL1_TUTORIAL } from "../world/tutorialData";
 import { AudioManager } from "../engine/AudioManager";
 import { RELAX_BUTTON_DELAY_MS } from "../utils/constants";
 import { HUD } from "./HUD";
@@ -36,6 +37,8 @@ export function GameView() {
 
   const [bubbleFading, setBubbleFading] = useState(false);
   const [momScreenPos, setMomScreenPos] = useState<{ x: number; y: number } | null>(null);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [tutorialFading, setTutorialFading] = useState(false);
   const decoyModeRef = useRef(decoyMode);
   decoyModeRef.current = decoyMode;
   const throwDecoyRef = useRef(throwDecoyFn);
@@ -52,6 +55,8 @@ export function GameView() {
     if (!mountRef.current) return;
     const el = mountRef.current;
     setBubbleFading(false);
+    setTutorialStep(0);
+    setTutorialFading(false);
     setConsumed(new Set());
     setFeedbacks([]);
     setShowNextBtn(false);
@@ -70,6 +75,7 @@ export function GameView() {
         onWon: (text)   => { setWinText(text); },
         onNearPickup: (itemName) => setNearPickup(itemName),
       });
+      // if (level.id === 1) game.setIntroPaused(true); // tutorial disabled for dev
       game.setIntroCompleteCallback(() => {
         setBubbleFading(true);
         setTimeout(() => setIntroActive(false), 600);
@@ -81,7 +87,21 @@ export function GameView() {
       game.setRelaxZoomCallback(() => {
         setRelaxActive(true);
         AudioManager.preload(["mom-sigh"]);
-        setTimeout(() => AudioManager.play("mom-sigh"), 400);
+        // Delay sigh until after the sit + head settle phases (~2.6s into the animation)
+        setTimeout(() => AudioManager.play("mom-sigh"), 2800);
+        // Enter 3D relax scene for levels that support it
+        const rd = RELAX_DATA[level.id];
+        if (rd?.sceneMode === "3d") {
+          game.enterRelaxScene();
+        }
+      });
+      game.setRelaxClickCallback((itemId, feedback, screenX, screenY) => {
+        feedbackKey.current++;
+        const fb: ClickFeedback = { text: feedback, x: screenX, y: screenY - 30, key: feedbackKey.current };
+        setFeedbacks(prev => [...prev, fb]);
+        setTimeout(() => {
+          setFeedbacks(prev => prev.filter(f => f.key !== fb.key));
+        }, 1200);
       });
       gameRef.current = game;
     };
@@ -128,10 +148,22 @@ export function GameView() {
     }
   }, [inventory, levelIdx]);
 
+  const relaxActiveRef = useRef(relaxActive);
+  relaxActiveRef.current = relaxActive;
+
   const handleInput = useCallback(
     (e: React.MouseEvent) => {
       const game = gameRef.current;
       if (!game) return;
+      // During 3D relax scene, forward clicks to the relax handler
+      if (relaxActiveRef.current) {
+        const level = LEVELS[useGameStore.getState().levelIdx];
+        const rd = RELAX_DATA[level.id];
+        if (rd?.sceneMode === "3d") {
+          game.handleRelaxClick(e.clientX, e.clientY);
+          return;
+        }
+      }
       const result = game.handleTap(e.clientX, e.clientY, decoyMode);
       if (result === "thrown") {
         throwDecoyFn();
@@ -185,6 +217,14 @@ export function GameView() {
               from { opacity:0; transform:translateY(10px) scale(0.9); }
               to   { opacity:1; transform:translateY(0) scale(1); }
             }
+            @keyframes tutorialFadeIn {
+              0%   { opacity:0; transform:translateY(12px) scale(0.95); }
+              100% { opacity:1; transform:translateY(0) scale(1); }
+            }
+            @keyframes tutorialFadeOut {
+              0%   { opacity:1; transform:translateY(0) scale(1); }
+              100% { opacity:0; transform:translateY(-12px) scale(0.95); }
+            }
           `}</style>
 
           {/* Level label — top center */}
@@ -208,167 +248,308 @@ export function GameView() {
             </p>
           </div>
 
-          {/* Speech bubble — positioned above Mom's head */}
-          {momScreenPos && (
-            <div style={{
-              position: "absolute",
-              left: momScreenPos.x,
-              top: momScreenPos.y - 20,
-              transform: "translate(-50%, -100%)",
-              display: "flex", flexDirection: "column", alignItems: "center",
-              animation: "bubbleIn 0.4s ease-out 0.3s both",
-            }}>
-              <div style={{
-                position: "relative",
+          {/* Level 1 tutorial cards — commented out for dev iteration
+          {level.id === 1 && tutorialStep < LEVEL1_TUTORIAL.length ? (
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                if (tutorialFading) return;
+                setTutorialFading(true);
+                setTimeout(() => {
+                  const next = tutorialStep + 1;
+                  setTutorialStep(next);
+                  setTutorialFading(false);
+                  if (next >= LEVEL1_TUTORIAL.length) {
+                    gameRef.current?.setIntroPaused(false);
+                  }
+                }, 1800 + 750);
+              }}
+              style={{
+                position: "absolute", bottom: "12%", left: "50%",
+                transform: "translateX(-50%)",
+                pointerEvents: "auto",
+              }}
+            >
+              <div key={`${tutorialStep}-${tutorialFading}`} style={{
                 background: "rgba(255,255,255,0.95)",
                 borderRadius: 16,
-                padding: "12px 20px",
-                maxWidth: 260,
+                padding: "16px 24px",
+                maxWidth: 280,
+                textAlign: "center",
+                animation: tutorialFading
+                  ? "tutorialFadeOut 1.8s ease-in-out forwards"
+                  : "tutorialFadeIn 1.8s ease-in-out",
               }}>
-                <p style={{
-                  fontFamily: "Georgia, serif", fontSize: 14,
-                  color: "#2A1A2A", margin: 0, textAlign: "center",
-                  fontStyle: "italic", lineHeight: 1.5,
-                }}>
-                  {quote}
+                <p style={{ fontSize: 28, margin: "0 0 8px" }}>
+                  {LEVEL1_TUTORIAL[tutorialStep].emoji}
                 </p>
-                {/* Triangle pointer */}
-                <div style={{
-                  position: "absolute", bottom: -8, left: "50%", marginLeft: -8,
-                  width: 0, height: 0,
-                  borderLeft: "8px solid transparent",
-                  borderRight: "8px solid transparent",
-                  borderTop: "8px solid rgba(255,255,255,0.95)",
-                }} />
+                <p style={{
+                  fontFamily: "Georgia, serif", fontSize: 15,
+                  color: "#2A1A2A", margin: "0 0 12px",
+                  lineHeight: 1.5,
+                }}>
+                  {LEVEL1_TUTORIAL[tutorialStep].text}
+                </p>
+                <p style={{
+                  fontFamily: "Georgia, serif", fontSize: 11,
+                  color: "#999", margin: 0, letterSpacing: 1,
+                }}>
+                  TAP TO CONTINUE
+                </p>
               </div>
             </div>
+          ) : ( */}
+          {(
+            /* Speech bubble — positioned above Mom's head */
+            momScreenPos && (
+              <div style={{
+                position: "absolute",
+                left: momScreenPos.x,
+                top: momScreenPos.y,
+                transform: "translate(-50%, -100%)",
+                display: "flex", flexDirection: "column", alignItems: "center",
+                animation: "bubbleIn 0.4s ease-out 0.3s both",
+              }}>
+                <div style={{
+                  position: "relative",
+                  background: "rgba(255,255,255,0.95)",
+                  borderRadius: 18,
+                  padding: "16px 26px",
+                  maxWidth: 320,
+                }}>
+                  <p style={{
+                    fontFamily: "Georgia, serif", fontSize: 18,
+                    color: "#2A1A2A", margin: 0, textAlign: "center",
+                    fontStyle: "italic", lineHeight: 1.5,
+                  }}>
+                    {quote}
+                  </p>
+                  {/* Triangle pointer */}
+                  <div style={{
+                    position: "absolute", bottom: -10, left: "50%", marginLeft: -10,
+                    width: 0, height: 0,
+                    borderLeft: "10px solid transparent",
+                    borderRight: "10px solid transparent",
+                    borderTop: "10px solid rgba(255,255,255,0.95)",
+                  }} />
+                </div>
+              </div>
+            )
           )}
         </div>
       )}
 
       {/* Relaxation overlay — on top of zoomed-in 3D scene */}
       {relaxActive && relaxData && (
-        <div style={{
-          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-          display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center",
-          background: "rgba(0,0,0,0.35)",
-          fontFamily: "Georgia, serif", color: "#FFF",
-          userSelect: "none",
-        }}>
-          <style>{`
-            @keyframes relaxFadeIn {
-              from { opacity:0; transform:translateY(12px); }
-              to   { opacity:1; transform:translateY(0); }
-            }
-            @keyframes floatUp {
-              from { opacity:1; transform:translateY(0); }
-              to   { opacity:0; transform:translateY(-40px); }
-            }
-            @keyframes gentleBob {
-              0%, 100% { transform:translateY(0); }
-              50% { transform:translateY(-4px); }
-            }
-            @keyframes buttonReveal {
-              from { opacity:0; transform:translateY(8px); }
-              to   { opacity:1; transform:translateY(0); }
-            }
-          `}</style>
-
-          {/* Mom's relaxation quote */}
-          <p style={{
-            fontSize: 22, fontStyle: "italic", margin: "0 0 40px",
-            opacity: relaxQuoteVisible ? 0.8 : 0,
-            transition: "opacity 1.5s ease-in",
-            textAlign: "center", padding: "0 32px",
-            letterSpacing: 1,
-          }}>
-            {relaxData.momQuote}
-          </p>
-
-          {/* Interactive items — no labels, just objects that react */}
+        relaxData.sceneMode === "3d" ? (
+          /* ── 3D relax scene: minimal overlay with floating feedback + buttons ── */
           <div style={{
-            display: "flex", gap: 24, flexWrap: "wrap",
-            justifyContent: "center", alignItems: "center",
-            padding: "0 24px", maxWidth: 340,
+            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+            pointerEvents: "none",
+            fontFamily: "Georgia, serif", color: "#FFF",
+            userSelect: "none",
           }}>
-            {relaxData.items.map((item, i) => {
-              const isConsumed = consumed.has(item.id);
-              return (
-                <div
-                  key={item.id}
-                  onClick={(e) => handleItemClick(item.id, item.clickEmoji, item.consumable, e)}
+            <style>{`
+              @keyframes relaxFadeIn {
+                from { opacity:0; transform:translateY(12px); }
+                to   { opacity:1; transform:translateY(0); }
+              }
+              @keyframes floatUp {
+                from { opacity:1; transform:translateY(0); }
+                to   { opacity:0; transform:translateY(-40px); }
+              }
+              @keyframes buttonReveal {
+                from { opacity:0; transform:translateY(8px); }
+                to   { opacity:1; transform:translateY(0); }
+              }
+            `}</style>
+
+            {/* Mom's quote — shown briefly at top */}
+            <p style={{
+              position: "absolute", top: "8%", left: 0, right: 0,
+              fontSize: 22, fontStyle: "italic", margin: 0,
+              opacity: relaxQuoteVisible ? 0.8 : 0,
+              transition: "opacity 1.5s ease-in",
+              textAlign: "center", padding: "0 32px",
+              letterSpacing: 1,
+              textShadow: "0 2px 8px rgba(0,0,0,0.6)",
+            }}>
+              {relaxData.momQuote}
+            </p>
+
+            {/* Floating click feedback */}
+            {feedbacks.map(fb => (
+              <div key={fb.key} style={{
+                position: "fixed",
+                left: fb.x,
+                top: fb.y,
+                transform: "translateX(-50%)",
+                fontSize: 15,
+                fontStyle: "italic",
+                color: "rgba(255,255,255,0.95)",
+                pointerEvents: "none",
+                animation: "floatUp 1.2s ease-out forwards",
+                whiteSpace: "nowrap",
+                textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+              }}>
+                {fb.text}
+              </div>
+            ))}
+
+            {/* Next level / Menu buttons */}
+            <div style={{
+              position: "absolute", bottom: 40, left: 0, right: 0,
+              display: "flex", gap: 12, justifyContent: "center",
+              alignItems: "center", flexDirection: "column",
+              pointerEvents: "auto",
+            }}>
+              {showNextBtn && (
+                <button
+                  onClick={() => isLast ? setScreen("menu") : startLevel(levelIdx + 1)}
                   style={{
-                    fontSize: 52,
-                    cursor: isConsumed ? "default" : "pointer",
-                    opacity: isConsumed ? 0 : 1,
-                    transition: "opacity 0.8s ease-out, transform 0.15s ease",
-                    animation: `relaxFadeIn 0.6s ease-out ${0.4 + i * 0.15}s both, gentleBob ${2.5 + i * 0.3}s ease-in-out ${i * 0.5}s infinite`,
-                    pointerEvents: isConsumed ? "none" : "auto",
-                  }}
-                  onMouseDown={(e) => {
-                    if (!isConsumed) (e.currentTarget as HTMLElement).style.transform = "scale(1.2)";
-                  }}
-                  onMouseUp={(e) => {
-                    (e.currentTarget as HTMLElement).style.transform = "";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.transform = "";
+                    ...relaxBtnStyle("rgba(255,255,255,0.12)"),
+                    animation: "buttonReveal 0.8s ease-out both",
                   }}
                 >
-                  {item.emoji}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Floating click feedback */}
-          {feedbacks.map(fb => (
-            <div key={fb.key} style={{
-              position: "fixed",
-              left: fb.x,
-              top: fb.y,
-              transform: "translateX(-50%)",
-              fontSize: 13,
-              fontStyle: "italic",
-              color: "rgba(255,255,255,0.9)",
-              pointerEvents: "none",
-              animation: "floatUp 1.2s ease-out forwards",
-              whiteSpace: "nowrap",
-            }}>
-              {fb.text}
-            </div>
-          ))}
-
-          {/* Next level / Menu buttons */}
-          <div style={{
-            position: "absolute", bottom: 40, left: 0, right: 0,
-            display: "flex", gap: 12, justifyContent: "center",
-            alignItems: "center", flexDirection: "column",
-          }}>
-            {showNextBtn && (
+                  {isLast ? "You Win!" : "Next Level"}
+                </button>
+              )}
               <button
-                onClick={() => isLast ? setScreen("menu") : startLevel(levelIdx + 1)}
+                onClick={() => setScreen("menu")}
                 style={{
-                  ...relaxBtnStyle("rgba(255,255,255,0.12)"),
-                  animation: "buttonReveal 0.8s ease-out both",
+                  ...relaxBtnStyle("transparent"),
+                  opacity: 0.3, fontSize: 11,
+                  animation: "relaxFadeIn 0.6s ease-out 1.5s both",
                 }}
               >
-                {isLast ? "You Win!" : "Next Level"}
+                Menu
               </button>
-            )}
-            <button
-              onClick={() => setScreen("menu")}
-              style={{
-                ...relaxBtnStyle("transparent"),
-                opacity: 0.3, fontSize: 11,
-                animation: "relaxFadeIn 0.6s ease-out 1.5s both",
-              }}
-            >
-              Menu
-            </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* ── Emoji overlay relax (levels 2-5) ── */
+          <div style={{
+            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.35)",
+            fontFamily: "Georgia, serif", color: "#FFF",
+            userSelect: "none",
+          }}>
+            <style>{`
+              @keyframes relaxFadeIn {
+                from { opacity:0; transform:translateY(12px); }
+                to   { opacity:1; transform:translateY(0); }
+              }
+              @keyframes floatUp {
+                from { opacity:1; transform:translateY(0); }
+                to   { opacity:0; transform:translateY(-40px); }
+              }
+              @keyframes gentleBob {
+                0%, 100% { transform:translateY(0); }
+                50% { transform:translateY(-4px); }
+              }
+              @keyframes buttonReveal {
+                from { opacity:0; transform:translateY(8px); }
+                to   { opacity:1; transform:translateY(0); }
+              }
+            `}</style>
+
+            {/* Mom's relaxation quote */}
+            <p style={{
+              fontSize: 22, fontStyle: "italic", margin: "0 0 40px",
+              opacity: relaxQuoteVisible ? 0.8 : 0,
+              transition: "opacity 1.5s ease-in",
+              textAlign: "center", padding: "0 32px",
+              letterSpacing: 1,
+            }}>
+              {relaxData.momQuote}
+            </p>
+
+            {/* Interactive items — no labels, just objects that react */}
+            <div style={{
+              display: "flex", gap: 24, flexWrap: "wrap",
+              justifyContent: "center", alignItems: "center",
+              padding: "0 24px", maxWidth: 340,
+            }}>
+              {relaxData.items.map((item, i) => {
+                const isConsumed = consumed.has(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    onClick={(e) => handleItemClick(item.id, item.clickEmoji, item.consumable, e)}
+                    style={{
+                      fontSize: 52,
+                      cursor: isConsumed ? "default" : "pointer",
+                      opacity: isConsumed ? 0 : 1,
+                      transition: "opacity 0.8s ease-out, transform 0.15s ease",
+                      animation: `relaxFadeIn 0.6s ease-out ${0.4 + i * 0.15}s both, gentleBob ${2.5 + i * 0.3}s ease-in-out ${i * 0.5}s infinite`,
+                      pointerEvents: isConsumed ? "none" : "auto",
+                    }}
+                    onMouseDown={(e) => {
+                      if (!isConsumed) (e.currentTarget as HTMLElement).style.transform = "scale(1.2)";
+                    }}
+                    onMouseUp={(e) => {
+                      (e.currentTarget as HTMLElement).style.transform = "";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.transform = "";
+                    }}
+                  >
+                    {item.emoji}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Floating click feedback */}
+            {feedbacks.map(fb => (
+              <div key={fb.key} style={{
+                position: "fixed",
+                left: fb.x,
+                top: fb.y,
+                transform: "translateX(-50%)",
+                fontSize: 13,
+                fontStyle: "italic",
+                color: "rgba(255,255,255,0.9)",
+                pointerEvents: "none",
+                animation: "floatUp 1.2s ease-out forwards",
+                whiteSpace: "nowrap",
+              }}>
+                {fb.text}
+              </div>
+            ))}
+
+            {/* Next level / Menu buttons */}
+            <div style={{
+              position: "absolute", bottom: 40, left: 0, right: 0,
+              display: "flex", gap: 12, justifyContent: "center",
+              alignItems: "center", flexDirection: "column",
+            }}>
+              {showNextBtn && (
+                <button
+                  onClick={() => isLast ? setScreen("menu") : startLevel(levelIdx + 1)}
+                  style={{
+                    ...relaxBtnStyle("rgba(255,255,255,0.12)"),
+                    animation: "buttonReveal 0.8s ease-out both",
+                  }}
+                >
+                  {isLast ? "You Win!" : "Next Level"}
+                </button>
+              )}
+              <button
+                onClick={() => setScreen("menu")}
+                style={{
+                  ...relaxBtnStyle("transparent"),
+                  opacity: 0.3, fontSize: 11,
+                  animation: "relaxFadeIn 0.6s ease-out 1.5s both",
+                }}
+              >
+                Menu
+              </button>
+            </div>
+          </div>
+        )
       )}
     </div>
   );

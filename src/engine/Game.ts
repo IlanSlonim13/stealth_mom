@@ -103,9 +103,12 @@ export class Game {
   private momPath: Vec2[] | null = null;
   private momPathIdx = 0;
   private momHead: THREE.Object3D | null = null;
+  private momHeadBaseY = 0;
   private momLower: THREE.Object3D | null = null;
   private momLeftLeg: THREE.Object3D | null = null;
   private momRightLeg: THREE.Object3D | null = null;
+  private momLeftCalf: THREE.Object3D | null = null;
+  private momRightCalf: THREE.Object3D | null = null;
   private momLeftArm: THREE.Object3D | null = null;
   private momRightArm: THREE.Object3D | null = null;
 
@@ -120,8 +123,10 @@ export class Game {
   private won = false;
   private introPhase = true;
   private introElapsed = 0;
+  private introPaused = false;
   private introFrustStart = 1;
   private introFrustEnd = 7;
+  private relaxFrustTarget = 1; // win zoom target (less aggressive than intro)
   private introCompleteCallback: (() => void) | null = null;
   private relaxZoomPhase = false;
   private relaxZoomElapsed = 0;
@@ -151,6 +156,33 @@ export class Game {
   // Animated outdoor objects
   private outdoorCars: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number }[] = [];
   private outdoorPeople: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D }[] = [];
+
+  // ── Relax scene (Level 1 3D interactive) ───────────────────────────────────
+  private relaxSceneActive = false;
+  private relaxClickCallback: ((itemId: string, feedback: string, screenX: number, screenY: number) => void) | null = null;
+  private relaxClickables: THREE.Object3D[] = [];
+  private relaxCheesePieces: THREE.Mesh[] = [];
+  private relaxWineGlass: THREE.Group | null = null;
+  private relaxTvScreen: THREE.Mesh | null = null;
+  private relaxTvLight: THREE.PointLight | null = null;
+
+  // Relax animation state machine
+  private relaxAnim: {
+    type: "idle" | "cheese-reach" | "cheese-eat" | "cheese-return" | "wine-reach" | "wine-drink" | "wine-return";
+    elapsed: number;
+    duration: number;
+    target?: THREE.Mesh; // cheese piece being eaten
+  } = { type: "idle", elapsed: 0, duration: 0 };
+
+  // Relax animation — multi-phase sit-down sequence
+  // Phases: 0=walk-step1, 1=walk-step2, 2=turn-and-sit, 3=head-settle,
+  //         4=left-leg-up, 5=right-leg-up, 6=arms, 7=done
+  private relaxPhase = -1;
+  private relaxPhaseT = 0;
+  private relaxWaypoints: THREE.Vector3[] = [];  // walk targets
+  private relaxWalkStartPos: THREE.Vector3 | null = null;
+  private relaxStartRotY = 0;
+  private relaxSeatPos: THREE.Vector3 | null = null; // couch seat position
 
   private level: LevelData;
   private callbacks: GameCallbacks;
@@ -197,6 +229,7 @@ export class Game {
     const aspect = el.clientWidth / el.clientHeight;
     this.introFrustEnd = Math.max(W, H) * TILE_SIZE * 0.65 / Math.min(aspect, 1);
     this.introFrustStart = this.introFrustEnd * 0.15;
+    this.relaxFrustTarget = this.introFrustEnd * 0.30; // win zoom: wider than intro
     this.frust = this.introFrustStart;
     const f = this.frust;
     this.camera = new THREE.OrthographicCamera(
@@ -441,7 +474,6 @@ export class Game {
       [fenceMinX + 1.5, fenceMinZ + 2],
       [fenceMaxX - 1.5, fenceMinZ + 2],
       [(fenceMinX + fenceMaxX) / 2 - 2, fenceMinZ + 1.5],
-      [fenceMinX + 2, fenceMaxZ - 1.5],
       [fenceMaxX - 2, houseMinZ - 5],
       [fenceMinX + 1.5, houseMinZ - 5],
     ];
@@ -1035,6 +1067,9 @@ export class Game {
       color: wallColor, roughness: 0.85, transparent: true, opacity: 0.3, depthWrite: false,
     });
     const baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.9 });
+    const baseMatTransparent = new THREE.MeshStandardMaterial({
+      color: baseColor, roughness: 0.9, transparent: true, opacity: 0.55, depthWrite: false,
+    });
 
     // Split dimensions: wall total height = 1.5
     const bottomH = 0.5;
@@ -1240,18 +1275,18 @@ export class Game {
           mh.translateZ(-0.025);
           this.scene.add(mh);
 
-          // Blinds — thin horizontal strips at the top ~35% of window
+          // Blinds — horizontal slats covering top ~55% of window
           const blindsMat = new THREE.MeshStandardMaterial({
             color: "#F0EDE8", roughness: 0.7,
-            transparent: true, opacity: 0.7, depthWrite: false,
+            transparent: true, opacity: 0.85, depthWrite: false,
           });
-          const blindCount = 6;
-          const blindZoneH = winH * 0.35;
+          const blindCount = 10;
+          const blindZoneH = winH * 0.55;
           const blindStartY = TILE_H + sillY + winH - blindZoneH;
           for (let bi = 0; bi < blindCount; bi++) {
             const by = blindStartY + (bi + 0.5) * (blindZoneH / blindCount);
             const blind = new THREE.Mesh(
-              new THREE.BoxGeometry(winW * 0.96, 0.008, 0.015),
+              new THREE.BoxGeometry(winW * 0.96, 0.012, 0.015),
               blindsMat,
             );
             blind.position.set(cx3, by, cz3);
@@ -1260,6 +1295,15 @@ export class Game {
             blind.renderOrder = 3;
             this.scene.add(blind);
           }
+          // Valance/header bar at top of blinds
+          const valance = new THREE.Mesh(
+            new THREE.BoxGeometry(winW * 1.02, 0.04, 0.03),
+            new THREE.MeshStandardMaterial({ color: "#E8E0D5", roughness: 0.6 }),
+          );
+          valance.position.set(cx3, TILE_H + sillY + winH + 0.01, cz3);
+          valance.rotation.y = rotY;
+          valance.translateZ(-0.04);
+          this.scene.add(valance);
 
           // Baseboard
           const base = new THREE.Mesh(
@@ -1292,6 +1336,49 @@ export class Game {
           panelTop.rotation.y = rotY;
           panelTop.renderOrder = 1;
           this.scene.add(panelTop);
+
+          // Baseboard
+          const baseT = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92 * TS, 0.06, 0.07),
+            baseMatTransparent,
+          );
+          baseT.position.set(wx3 + ox, TILE_H + 0.03, wz3 + oz);
+          baseT.rotation.y = rotY;
+          baseT.renderOrder = 1;
+          this.scene.add(baseT);
+
+          // Crown molding
+          const crownT = new THREE.Mesh(
+            new THREE.BoxGeometry(0.94 * TS, 0.04, 0.08),
+            baseMatTransparent,
+          );
+          crownT.position.set(wx3 + ox, TILE_H + 1.48, wz3 + oz);
+          crownT.rotation.y = rotY;
+          crownT.renderOrder = 1;
+          this.scene.add(crownT);
+
+          // Picture frames on transparent walls too
+          artCounter++;
+          if (artCounter % 3 === 0) {
+            const fColor = "#4A2820";
+            const cColor = artColors[(artCounter / 3 | 0) % artColors.length];
+            const frame = new THREE.Mesh(
+              new THREE.BoxGeometry(0.3 * TS, 0.25, 0.03),
+              new THREE.MeshStandardMaterial({ color: fColor, roughness: 0.7, transparent: true, opacity: 0.55 }),
+            );
+            frame.position.set(wx3 + ox * 0.85, TILE_H + 0.8, wz3 + oz * 0.85);
+            frame.rotation.y = rotY;
+            frame.renderOrder = 2;
+            this.scene.add(frame);
+            const canvas = new THREE.Mesh(
+              new THREE.BoxGeometry(0.24 * TS, 0.19, 0.02),
+              new THREE.MeshStandardMaterial({ color: cColor, roughness: 0.5, transparent: true, opacity: 0.55 }),
+            );
+            canvas.position.set(wx3 + ox * 0.83, TILE_H + 0.8, wz3 + oz * 0.83);
+            canvas.rotation.y = rotY;
+            canvas.renderOrder = 2;
+            this.scene.add(canvas);
+          }
         } else {
           // Fully opaque wall panel with decorations
           const panel = new THREE.Mesh(
@@ -1320,22 +1407,32 @@ export class Game {
           crown.rotation.y = rotY;
           this.scene.add(crown);
 
-          // Wall art every 4 opaque panels
+          // Picture frames every 3 opaque panels
           artCounter++;
-          if (artCounter % 4 === 0) {
-            const frameMat = new THREE.MeshStandardMaterial({ color: "#4A2820", roughness: 0.7 });
-            const canvasMat = new THREE.MeshStandardMaterial({
-              color: artColors[(artCounter / 4 | 0) % artColors.length],
-              roughness: 0.5,
-            });
-            const frame = new THREE.Mesh(new THREE.BoxGeometry(0.22 * TS, 0.18, 0.03), frameMat);
-            frame.position.set(wx3 + ox * 0.85, TILE_H + 0.75, wz3 + oz * 0.85);
+          if (artCounter % 3 === 0) {
+            const fColor = "#4A2820";
+            const cColor = artColors[(artCounter / 3 | 0) % artColors.length];
+            const frame = new THREE.Mesh(
+              new THREE.BoxGeometry(0.3 * TS, 0.25, 0.03),
+              new THREE.MeshStandardMaterial({ color: fColor, roughness: 0.7 }),
+            );
+            frame.position.set(wx3 + ox * 0.85, TILE_H + 0.8, wz3 + oz * 0.85);
             frame.rotation.y = rotY;
             this.scene.add(frame);
-            const canvas = new THREE.Mesh(new THREE.BoxGeometry(0.17 * TS, 0.13, 0.02), canvasMat);
-            canvas.position.set(wx3 + ox * 0.83, TILE_H + 0.75, wz3 + oz * 0.83);
+            const canvas = new THREE.Mesh(
+              new THREE.BoxGeometry(0.24 * TS, 0.19, 0.02),
+              new THREE.MeshStandardMaterial({ color: cColor, roughness: 0.5 }),
+            );
+            canvas.position.set(wx3 + ox * 0.83, TILE_H + 0.8, wz3 + oz * 0.83);
             canvas.rotation.y = rotY;
             this.scene.add(canvas);
+            const hl = new THREE.Mesh(
+              new THREE.BoxGeometry(0.06 * TS, 0.04, 0.005),
+              new THREE.MeshStandardMaterial({ color: "#FFFFFF", roughness: 0.3, transparent: true, opacity: 0.3 }),
+            );
+            hl.position.set(wx3 + ox * 0.82, TILE_H + 0.85, wz3 + oz * 0.82);
+            hl.rotation.y = rotY;
+            this.scene.add(hl);
           }
         }
       }
@@ -1354,6 +1451,8 @@ export class Game {
       g.userData = { label: f.label, hasDecoy: !!f.hasDecoy };
 
       this.buildFurnitureShape(g, f, palette);
+
+      if (f.rot) g.rotation.y = f.rot;
 
       if (f.hasDecoy) {
         const glowGeo = new THREE.SphereGeometry(0.07, 8, 8);
@@ -1526,6 +1625,26 @@ export class Game {
         }
         break;
       }
+      case "chaiseLounge": {
+        const clFab = std(f.col, 0.75);
+        const clDark = std(f.col + "AA", 0.8);
+        // Seat — slightly lower than couch
+        add(new THREE.BoxGeometry(tw, 0.14, th), clFab, 0.24);
+        // Back (along one long side)
+        add(new THREE.BoxGeometry(tw, 0.26, 0.12), clDark, 0.38).position.z = th / 2 - 0.06;
+        // Raised head-end (north side)
+        const headRest = new THREE.Mesh(
+          new THREE.BoxGeometry(tw, 0.10, th * 0.3),
+          clDark
+        );
+        headRest.position.set(0, 0.36, -th / 2 + th * 0.15);
+        headRest.rotation.x = -0.15; // slight incline
+        headRest.castShadow = true;
+        g.add(headRest);
+        // Cushion pad on seat
+        add(new THREE.BoxGeometry(tw * 0.85, 0.04, th * 0.85), clFab, 0.32);
+        break;
+      }
       case "tv": {
         add(new THREE.BoxGeometry(tw, 0.32, 0.08), std("#111", 0.3, 0.3), 0.3); // screen
         const screen = new THREE.Mesh(new THREE.BoxGeometry(tw - 0.06, 0.24, 0.01),
@@ -1611,25 +1730,26 @@ export class Game {
         break;
       }
       case "tvUnit": {
-        // Dresser body
-        add(new THREE.BoxGeometry(tw, 0.35, th), std(f.col, 0.7), 0.18);
+        // Dresser body (thin depth)
+        const dDepth = Math.min(th, 0.3);
+        add(new THREE.BoxGeometry(tw, 0.35, dDepth), std(f.col, 0.7), 0.18);
         // Top surface
-        add(new THREE.BoxGeometry(tw + 0.04, 0.04, th + 0.04), std("#D0C8B8", 0.4), 0.37);
-        // TV screen sitting on top, facing south (into room)
-        const tvBody = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.8, 0.28, 0.06), std("#111", 0.3, 0.3));
-        tvBody.position.set(0, 0.56, 0);
+        add(new THREE.BoxGeometry(tw + 0.04, 0.04, dDepth + 0.04), std("#D0C8B8", 0.4), 0.37);
+        // TV screen sitting on top — tall like a real TV (3× height)
+        const tvBody = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.8, 0.84, 0.06), std("#111", 0.3, 0.3));
+        tvBody.position.set(0, 0.84, 0);
         tvBody.castShadow = true;
         g.add(tvBody);
         // Emissive screen face
         const scFace = new THREE.Mesh(
-          new THREE.BoxGeometry(tw * 0.7, 0.2, 0.01),
+          new THREE.BoxGeometry(tw * 0.7, 0.72, 0.01),
           new THREE.MeshStandardMaterial({ color: "#0A0A2A", emissive: "#050510", emissiveIntensity: 0.5 }),
         );
-        scFace.position.set(0, 0.56, 0.035);
+        scFace.position.set(0, 0.84, 0.035);
         g.add(scFace);
         // Drawer lines
-        for (let i = 0; i < 3; i++) {
-          add(new THREE.BoxGeometry(tw + 0.01, 0.01, th + 0.01), std("#5A3A10", 0.8), 0.08 + i * 0.11);
+        for (let i = 0; i < 2; i++) {
+          add(new THREE.BoxGeometry(tw + 0.01, 0.01, dDepth + 0.01), std("#5A3A10", 0.8), 0.1 + i * 0.13);
         }
         break;
       }
@@ -1877,19 +1997,40 @@ export class Game {
         break;
       }
       case "kitchenIsland": {
-        // Kitchen island: wider counter with overhead detail
+        // Kitchen island: wider counter with sink on south edge
         add(new THREE.BoxGeometry(tw, 0.38, th), std("#7A6A5A", 0.7), 0.19); // base
         add(new THREE.BoxGeometry(tw + 0.06, 0.05, th + 0.06), std("#E8DDD0", 0.35), 0.41); // countertop
-        // Cutting board
+        // Sink basin — south edge of island
+        const sinkRim = new THREE.Mesh(
+          new THREE.BoxGeometry(0.22, 0.02, 0.16),
+          std("#C0C0C8", 0.25, 0.3)
+        );
+        sinkRim.position.set(0, 0.43, th / 2 - 0.12);
+        g.add(sinkRim);
+        const sinkBasin = new THREE.Mesh(
+          new THREE.BoxGeometry(0.18, 0.04, 0.12),
+          std("#A0A0AA", 0.3, 0.2)
+        );
+        sinkBasin.position.set(0, 0.40, th / 2 - 0.12);
+        g.add(sinkBasin);
+        // Faucet — behind sink on south edge
+        const faucetBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.012, 0.012, 0.08, 6),
+          std("#C0C0C8", 0.2, 0.5)
+        );
+        faucetBase.position.set(0, 0.48, th / 2 - 0.02);
+        g.add(faucetBase);
+        const faucetArm = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.008, 0.008, 0.06, 6),
+          std("#C0C0C8", 0.2, 0.5)
+        );
+        faucetArm.rotation.x = Math.PI / 2;
+        faucetArm.position.set(0, 0.52, th / 2 - 0.05);
+        g.add(faucetArm);
+        // Cutting board — north side
         const board = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.12), std("#C8A870", 0.8));
-        board.position.set(-0.05, 0.44, 0); board.rotation.y = 0.2;
+        board.position.set(-0.12, 0.44, -th / 2 + 0.12); board.rotation.y = 0.2;
         g.add(board);
-        // Bowl
-        const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
-          std("#E0E0E0", 0.3, 0.1));
-        bowl.rotation.x = Math.PI;
-        bowl.position.set(0.1, 0.47, 0.02);
-        g.add(bowl);
         break;
       }
       case "toiletries": {
@@ -1986,37 +2127,78 @@ export class Game {
         break;
       }
       case "door": {
-        // Door frame with partially open door
-        const doorFrameMat = std("#E8E0D0", 0.7);
-        // Frame: two vertical posts + top header
-        const postGeo = new THREE.BoxGeometry(0.04, 0.85, 0.08);
-        const leftPost = new THREE.Mesh(postGeo, doorFrameMat);
-        leftPost.position.set(-tw * 0.42, 0.43, 0);
-        g.add(leftPost);
-        const rightPost = new THREE.Mesh(postGeo, doorFrameMat);
-        rightPost.position.set(tw * 0.42, 0.43, 0);
-        g.add(rightPost);
-        // Header
-        add(new THREE.BoxGeometry(tw * 0.9, 0.05, 0.08), doorFrameMat, 0.88);
-        // Door panel (slightly ajar — rotated 25 degrees)
-        const doorPanel = new THREE.Mesh(
-          new THREE.BoxGeometry(tw * 0.78, 0.8, 0.04),
-          std("#8B6F5C", 0.75),
+        // Door spanning the doorway — use the longer dimension as visual width
+        const dw = Math.max(tw, th);
+        const doorTrimMat = std("#D0C4B0", 0.7);
+        const doorPanelMat = std("#8B6F5C", 0.75);
+        // Rotate entire door group so it spans along z (the doorway axis)
+        const doorRoot = new THREE.Group();
+        if (th > tw) doorRoot.rotation.y = Math.PI / 2;
+        // Crown molding header
+        const crownHeader = new THREE.Mesh(
+          new THREE.BoxGeometry(dw * 1.0, 0.06, 0.12),
+          doorTrimMat,
         );
-        // Pivot from left edge: offset x by half-width, rotate, then shift
+        crownHeader.position.set(0, 0.90, 0);
+        doorRoot.add(crownHeader);
+        // Trim strip below crown
+        const trimStrip = new THREE.Mesh(
+          new THREE.BoxGeometry(dw * 0.96, 0.03, 0.10),
+          doorTrimMat,
+        );
+        trimStrip.position.set(0, 0.86, 0);
+        doorRoot.add(trimStrip);
+        // Side trim (vertical casing)
+        const sideTrimGeo = new THREE.BoxGeometry(0.035, 0.86, 0.09);
+        const leftTrim = new THREE.Mesh(sideTrimGeo, doorTrimMat);
+        leftTrim.position.set(-dw * 0.47, 0.43, 0);
+        doorRoot.add(leftTrim);
+        const rightTrim = new THREE.Mesh(sideTrimGeo, doorTrimMat);
+        rightTrim.position.set(dw * 0.47, 0.43, 0);
+        doorRoot.add(rightTrim);
+        // Door panel (slightly ajar)
+        const doorPanel = new THREE.Mesh(
+          new THREE.BoxGeometry(dw * 0.88, 0.82, 0.035),
+          doorPanelMat,
+        );
         const doorGroup = new THREE.Group();
-        doorPanel.position.x = tw * 0.39;
+        doorPanel.position.x = -dw * 0.44;
         doorGroup.add(doorPanel);
-        doorGroup.position.set(-tw * 0.39, 0.42, 0);
-        doorGroup.rotation.y = -0.4; // slightly open
-        g.add(doorGroup);
+        doorGroup.position.set(dw * 0.44, 0.42, 0);
+        doorGroup.rotation.y = 0.45; // slightly open
+        doorRoot.add(doorGroup);
         // Door knob
         const knob = new THREE.Mesh(
           new THREE.SphereGeometry(0.025, 6, 6),
           std("#C0A040", 0.3, 0.4),
         );
-        knob.position.set(tw * 0.65, 0.42, -0.03);
+        knob.position.set(-dw * 0.72, 0.42, 0.03);
         doorGroup.add(knob);
+        // Transom wall above door — fill gap between door top and ceiling (wall height 1.5)
+        const transomH = 1.5 - 0.93; // wall top minus door crown top
+        const transomMat = new THREE.MeshStandardMaterial({
+          color: _palette.wall, roughness: 0.85,
+          transparent: true, opacity: 0.45, depthWrite: false,
+        });
+        const transom = new THREE.Mesh(
+          new THREE.BoxGeometry(dw * 1.02, transomH, 0.06),
+          transomMat,
+        );
+        transom.position.set(0, 0.93 + transomH / 2, 0);
+        transom.renderOrder = 1;
+        doorRoot.add(transom);
+        // Crown molding at ceiling level above transom
+        const transomCrown = new THREE.Mesh(
+          new THREE.BoxGeometry(dw * 1.04, 0.04, 0.08),
+          new THREE.MeshStandardMaterial({
+            color: _palette.baseboard, roughness: 0.9,
+            transparent: true, opacity: 0.5, depthWrite: false,
+          }),
+        );
+        transomCrown.position.set(0, 1.48, 0);
+        transomCrown.renderOrder = 1;
+        doorRoot.add(transomCrown);
+        g.add(doorRoot);
         break;
       }
       case "fireplace": {
@@ -2250,6 +2432,295 @@ export class Game {
         backrest.castShadow = true; g.add(backrest);
         break;
       }
+      case "diningTable": {
+        const dtCol = f.col;
+        // Thick tabletop
+        add(new THREE.BoxGeometry(tw + 0.06, 0.07, th + 0.06), std(dtCol, 0.55), 0.46);
+        // Apron (skirt) under tabletop
+        const apronMat = std(dtCol, 0.65);
+        // Long sides
+        const apronLong = new THREE.BoxGeometry(tw - 0.08, 0.06, 0.03);
+        const aF = new THREE.Mesh(apronLong, apronMat);
+        aF.position.set(0, 0.40, -th / 2 + 0.06); aF.castShadow = true; g.add(aF);
+        const aB = new THREE.Mesh(apronLong, apronMat);
+        aB.position.set(0, 0.40, th / 2 - 0.06); aB.castShadow = true; g.add(aB);
+        // Short sides
+        const apronShort = new THREE.BoxGeometry(0.03, 0.06, th - 0.08);
+        const aL = new THREE.Mesh(apronShort, apronMat);
+        aL.position.set(-tw / 2 + 0.06, 0.40, 0); aL.castShadow = true; g.add(aL);
+        const aR = new THREE.Mesh(apronShort, apronMat);
+        aR.position.set(tw / 2 - 0.06, 0.40, 0); aR.castShadow = true; g.add(aR);
+        // 4 turned legs
+        const dtLegH = 0.37;
+        const dtLegGeo = new THREE.CylinderGeometry(0.03, 0.025, dtLegH, 6);
+        const dtLegMat = std(dtCol, 0.7);
+        for (const [lx, lz] of [
+          [-tw / 2 + 0.07, -th / 2 + 0.07],
+          [ tw / 2 - 0.07, -th / 2 + 0.07],
+          [-tw / 2 + 0.07,  th / 2 - 0.07],
+          [ tw / 2 - 0.07,  th / 2 - 0.07],
+        ]) {
+          const dtLeg = new THREE.Mesh(dtLegGeo, dtLegMat);
+          dtLeg.position.set(lx, dtLegH / 2, lz);
+          dtLeg.castShadow = true; g.add(dtLeg);
+        }
+        break;
+      }
+      case "credenza": {
+        const crCol = f.col;
+        const crWood = std(crCol, 0.65);
+        // Main body — low & wide
+        add(new THREE.BoxGeometry(tw, 0.40, th), crWood, 0.24);
+        // Top surface
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std(crCol, 0.5), 0.455);
+        // Two door panels on front face
+        const doorW = (tw - 0.08) / 2;
+        const crDoorMat = std("#5A3018", 0.7);
+        for (const dx of [-doorW / 2 - 0.01, doorW / 2 + 0.01]) {
+          const crDoor = new THREE.Mesh(
+            new THREE.BoxGeometry(doorW - 0.02, 0.30, 0.015), crDoorMat,
+          );
+          crDoor.position.set(dx, 0.22, -th / 2 - 0.005);
+          crDoor.castShadow = true; g.add(crDoor);
+        }
+        // Door knobs
+        const crKnobMat = std("#C0A040", 0.3, 0.4);
+        for (const dx of [-0.04, 0.04]) {
+          const crKnob = new THREE.Mesh(
+            new THREE.SphereGeometry(0.018, 5, 5), crKnobMat,
+          );
+          crKnob.position.set(dx, 0.24, -th / 2 - 0.02);
+          g.add(crKnob);
+        }
+        // Short tapered legs
+        const crLegH = 0.04;
+        const crLegGeo = new THREE.BoxGeometry(0.04, crLegH, 0.04);
+        const crLegMat = std(crCol, 0.7);
+        for (const [lx, lz] of [
+          [-tw / 2 + 0.05, -th / 2 + 0.04],
+          [ tw / 2 - 0.05, -th / 2 + 0.04],
+          [-tw / 2 + 0.05,  th / 2 - 0.04],
+          [ tw / 2 - 0.05,  th / 2 - 0.04],
+        ]) {
+          const crLeg = new THREE.Mesh(crLegGeo, crLegMat);
+          crLeg.position.set(lx, crLegH / 2, lz);
+          crLeg.castShadow = true; g.add(crLeg);
+        }
+        break;
+      }
+      case "chinaCredenza": {
+        const ccWood = std(f.col, 0.65);
+        // Main body — low & wide
+        add(new THREE.BoxGeometry(tw, 0.40, th), ccWood, 0.24);
+        // Top surface
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std(f.col, 0.5), 0.455);
+        // Back panel (display backdrop)
+        const backPanel = new THREE.Mesh(
+          new THREE.BoxGeometry(tw - 0.02, 0.50, 0.02), std("#4A2A10", 0.7)
+        );
+        backPanel.position.set(0, 0.70, th / 2 - 0.01);
+        backPanel.castShadow = true; g.add(backPanel);
+        // Display plates standing vertically on top
+        const plateMat = std("#F0F0E8", 0.3, 0.1);
+        const plateAccent = std("#2244AA", 0.4);
+        const plateSpacing = tw / 5;
+        for (let i = 0; i < 4; i++) {
+          const px = -tw / 2 + plateSpacing * (i + 1);
+          // Plate disc (vertical)
+          const plate = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 0.006, 12), plateMat
+          );
+          plate.rotation.x = Math.PI * 0.12; // lean back slightly
+          plate.rotation.z = Math.PI / 2;
+          plate.position.set(px, 0.54, th / 2 - 0.04);
+          g.add(plate);
+          // Blue pattern ring on plate
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(0.04, 0.004, 6, 12), plateAccent
+          );
+          ring.rotation.x = Math.PI * 0.12;
+          ring.rotation.z = Math.PI / 2;
+          ring.position.set(px, 0.54, th / 2 - 0.04);
+          g.add(ring);
+        }
+        // Short legs
+        const ccLegGeo = new THREE.BoxGeometry(0.04, 0.04, 0.04);
+        for (const [lx, lz] of [
+          [-tw/2+0.05, -th/2+0.04], [tw/2-0.05, -th/2+0.04],
+          [-tw/2+0.05, th/2-0.04], [tw/2-0.05, th/2-0.04],
+        ]) {
+          const leg = new THREE.Mesh(ccLegGeo, ccWood);
+          leg.position.set(lx, 0.02, lz);
+          leg.castShadow = true; g.add(leg);
+        }
+        break;
+      }
+      case "barChair": {
+        const bcMat = std(f.col || "#555555", 0.5, 0.2);
+        // Tall legs (bar height)
+        const bcLegH = 0.40;
+        const bcLegGeo = new THREE.CylinderGeometry(0.012, 0.012, bcLegH, 4);
+        for (const [lx, lz] of [[-0.05,-0.05],[0.05,-0.05],[-0.05,0.05],[0.05,0.05]]) {
+          const leg = new THREE.Mesh(bcLegGeo, bcMat);
+          leg.position.set(lx, bcLegH / 2, lz);
+          leg.castShadow = true; g.add(leg);
+        }
+        // Footrest ring
+        const footrest = new THREE.Mesh(
+          new THREE.TorusGeometry(0.06, 0.006, 4, 8), bcMat
+        );
+        footrest.rotation.x = Math.PI / 2;
+        footrest.position.y = 0.15;
+        g.add(footrest);
+        // Seat (round)
+        const seat = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.07, 0.06, 0.04, 8),
+          std(f.col || "#555555", 0.6)
+        );
+        seat.position.y = bcLegH + 0.02;
+        seat.castShadow = true; g.add(seat);
+        break;
+      }
+      case "gasStove": {
+        // Kitchen stove/oven with gas burners + grates
+        add(new THREE.BoxGeometry(tw, 0.4, th), std("#333333", 0.5, 0.15), 0.2); // body
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std("#444444", 0.4, 0.2), 0.42); // cooktop
+        // Gas burner rings with blue flame hints
+        const gsBurnerMat = std("#222222", 0.3, 0.3);
+        const gsFlameMat = new THREE.MeshStandardMaterial({
+          color: "#2244CC", emissive: "#1122AA", emissiveIntensity: 0.4,
+          transparent: true, opacity: 0.6,
+        });
+        [[-0.1, -0.08], [0.1, -0.08], [-0.1, 0.08], [0.1, 0.08]].forEach(([bx, bz]) => {
+          // Burner ring
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 6, 12), gsBurnerMat);
+          ring.rotation.x = Math.PI / 2;
+          ring.position.set(bx, 0.44, bz);
+          g.add(ring);
+          // Gas flame ring (inner, smaller)
+          const flame = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.005, 6, 12), gsFlameMat);
+          flame.rotation.x = Math.PI / 2;
+          flame.position.set(bx, 0.445, bz);
+          g.add(flame);
+          // Cast iron grate (cross pattern)
+          const grateMat = std("#1A1A1A", 0.6, 0.2);
+          for (const rot of [0, Math.PI / 2]) {
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.008, 0.008), grateMat);
+            bar.rotation.y = rot;
+            bar.position.set(bx, 0.455, bz);
+            g.add(bar);
+          }
+        });
+        // Control knobs on front
+        const knobMat = std("#888888", 0.3, 0.4);
+        for (let i = 0; i < 4; i++) {
+          const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.01, 8), knobMat);
+          knob.rotation.x = Math.PI / 2;
+          knob.position.set(-0.12 + i * 0.08, 0.32, -th / 2 - 0.005);
+          g.add(knob);
+        }
+        // Oven door handle
+        const gsHandle = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.6, 0.015, 0.015), std("#888", 0.3, 0.4));
+        gsHandle.position.set(0, 0.28, -th / 2 - 0.01);
+        g.add(gsHandle);
+        // Oven window
+        const gsOvenWindow = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.5, 0.12, 0.01),
+          new THREE.MeshStandardMaterial({ color: "#1A1A2A", roughness: 0.1, metalness: 0.2 }));
+        gsOvenWindow.position.set(0, 0.15, -th / 2 - 0.005);
+        g.add(gsOvenWindow);
+        break;
+      }
+      case "wallCabinet": {
+        const cabMat = std(f.col || "#E8DDD0", 0.6);
+        const cabDark = std("#C8B8A0", 0.65);
+        // Cabinet box (mounted high on wall)
+        const cabH = 0.25;
+        add(new THREE.BoxGeometry(tw, cabH, th), cabMat, 0.80);
+        // Cabinet door panels
+        const numDoors = Math.max(1, Math.round(f.w / 2));
+        const cabDoorW = (tw - 0.02) / numDoors;
+        for (let i = 0; i < numDoors; i++) {
+          const dx = -tw / 2 + 0.01 + cabDoorW * i + cabDoorW / 2;
+          const cabDoor = new THREE.Mesh(
+            new THREE.BoxGeometry(cabDoorW - 0.02, cabH - 0.04, 0.015), cabDark
+          );
+          cabDoor.position.set(dx, 0.80, -th / 2 - 0.005);
+          g.add(cabDoor);
+          // Knob
+          const cabKnob = new THREE.Mesh(
+            new THREE.SphereGeometry(0.01, 5, 5), std("#C0A040", 0.3, 0.4)
+          );
+          cabKnob.position.set(dx, 0.78, -th / 2 - 0.02);
+          g.add(cabKnob);
+        }
+        break;
+      }
+      case "hangingPots": {
+        // Ceiling-mounted pot rack with hanging pots and pans
+        const rackMat = std("#3A3A3A", 0.4, 0.3);
+        // Horizontal rack bar
+        const rackBar = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.8, 0.015, 0.015), rackMat
+        );
+        rackBar.position.y = 1.10;
+        g.add(rackBar);
+        // Cross bar
+        const crossBar = new THREE.Mesh(
+          new THREE.BoxGeometry(0.015, 0.015, th * 0.5), rackMat
+        );
+        crossBar.position.y = 1.10;
+        g.add(crossBar);
+        // Chains/rods from ceiling
+        for (const cx of [-tw * 0.3, tw * 0.3]) {
+          const chain = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.005, 0.005, 0.20, 4), rackMat
+          );
+          chain.position.set(cx, 1.20, 0);
+          g.add(chain);
+        }
+        // Hanging pots and pans
+        const potMat = std("#8A8A8A", 0.3, 0.4);
+        const copperMat = std("#B87333", 0.35, 0.3);
+        const hookGeo = new THREE.CylinderGeometry(0.003, 0.003, 0.06, 4);
+        // Pan 1 (copper, flat)
+        const pan1 = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.06, 0.015, 8), copperMat
+        );
+        pan1.position.set(-tw * 0.2, 1.02, -0.03);
+        g.add(pan1);
+        const pan1Handle = new THREE.Mesh(
+          new THREE.BoxGeometry(0.06, 0.008, 0.008), copperMat
+        );
+        pan1Handle.position.set(-tw * 0.2 + 0.06, 1.02, -0.03);
+        g.add(pan1Handle);
+        const hook1 = new THREE.Mesh(hookGeo, rackMat);
+        hook1.position.set(-tw * 0.2, 1.07, -0.03);
+        g.add(hook1);
+        // Pot 2 (steel, deep)
+        const pot2 = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.05, 0.04, 0.05, 8), potMat
+        );
+        pot2.position.set(0, 1.00, 0.02);
+        g.add(pot2);
+        const hook2 = new THREE.Mesh(hookGeo, rackMat);
+        hook2.position.set(0, 1.07, 0.02);
+        g.add(hook2);
+        // Pan 3 (dark, small)
+        const pan3 = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.045, 0.045, 0.012, 8), std("#444", 0.5, 0.2)
+        );
+        pan3.position.set(tw * 0.2, 1.04, -0.01);
+        g.add(pan3);
+        const pan3Handle = new THREE.Mesh(
+          new THREE.BoxGeometry(0.05, 0.006, 0.006), std("#444", 0.5, 0.2)
+        );
+        pan3Handle.position.set(tw * 0.2 - 0.05, 1.04, -0.01);
+        g.add(pan3Handle);
+        const hook3 = new THREE.Mesh(hookGeo, rackMat);
+        hook3.position.set(tw * 0.2, 1.07, -0.01);
+        g.add(hook3);
+        break;
+      }
       default: {
         // Generic fallback
         add(new THREE.BoxGeometry(tw, 0.45, th), new THREE.MeshToonMaterial({ color: f.col }), 0.23);
@@ -2320,32 +2791,44 @@ export class Game {
       return m;
     };
 
-    // Legs (two separate cylinders, pivoting from hip)
+    // Legs — each is a group (pivot at hip) with thigh + knee-pivot + calf + shoe
     const legMat = new THREE.MeshToonMaterial({ color: outfit.pantsColor });
-    const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.3, 6), legMat);
-    leftLeg.position.set(-0.07, 0.15, 0);
-    leftLeg.castShadow = true;
-    g.add(leftLeg);
-    this.momLeftLeg = leftLeg;
-
-    const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.3, 6), legMat);
-    rightLeg.position.set(0.07, 0.15, 0);
-    rightLeg.castShadow = true;
-    g.add(rightLeg);
-    this.momRightLeg = rightLeg;
-
-    // Shoes
     const shoeMat = new THREE.MeshToonMaterial({ color: "#3A2A1A" });
-    const shoeL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), shoeMat);
-    shoeL.position.set(-0.07, 0.01, 0.01);
-    g.add(shoeL);
-    const shoeR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), shoeMat);
-    shoeR.position.set(0.07, 0.01, 0.01);
-    g.add(shoeR);
+
+    const buildLeg = (xOff: number) => {
+      const legGroup = new THREE.Group();
+      legGroup.position.set(xOff, 0.30, 0);
+      // Thigh
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.15, 6), legMat);
+      thigh.position.y = -0.075;
+      thigh.castShadow = true;
+      legGroup.add(thigh);
+      // Knee pivot (calf + shoe hang from here)
+      const knee = new THREE.Group();
+      knee.position.y = -0.15;
+      const calf = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.15, 6), legMat);
+      calf.position.y = -0.075;
+      calf.castShadow = true;
+      knee.add(calf);
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), shoeMat);
+      shoe.position.set(0, -0.14, 0.01);
+      knee.add(shoe);
+      legGroup.add(knee);
+      g.add(legGroup);
+      return { legGroup, knee };
+    };
+
+    const leftResult = buildLeg(-0.07);
+    this.momLeftLeg = leftResult.legGroup;
+    this.momLeftCalf = leftResult.knee;
+
+    const rightResult = buildLeg(0.07);
+    this.momRightLeg = rightResult.legGroup;
+    this.momRightCalf = rightResult.knee;
 
     // Hips / waist connector
     addMesh(new THREE.CylinderGeometry(0.13, 0.14, 0.12, 8), outfit.pantsColor, 0.36);
-    this.momLower = leftLeg; // keep for backward compat
+    this.momLower = leftResult.legGroup; // keep for backward compat
 
     // Top — shape varies
     let headY = 0.92;
@@ -2397,6 +2880,7 @@ export class Game {
     // Head
     const head = addMesh(new THREE.SphereGeometry(0.13, 8, 8), "#F5D0B0", headY);
     this.momHead = head;
+    this.momHeadBaseY = head.position.y;
 
     // Eyes — children of head so they move with head bob
     const eyeMat = new THREE.MeshToonMaterial({ color: "#2A1A0A" });
@@ -2411,16 +2895,16 @@ export class Game {
     const hairMat = new THREE.MeshToonMaterial({ color: "#4A2820" });
     switch (outfit.hair) {
       case "ponytail": {
-        // Hair cap on top
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.135, 8, 4), hairMat);
-        cap.scale.y = 0.45;
-        cap.position.set(0, 0.06, -0.02);
+        // Hair cap covering top of head
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.145, 8, 6), hairMat);
+        cap.scale.y = 0.6;
+        cap.position.set(0, 0.07, 0.0);
         head.add(cap);
         // Tie point at back of head
         const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), hairMat);
         bun.position.set(0, -0.02, -0.12);
         head.add(bun);
-        // Ponytail hanging down from back of head
+        // Ponytail hanging down
         const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.02, 0.3, 5), hairMat);
         tail.position.set(0, -0.17, -0.14);
         tail.rotation.x = 0.3;
@@ -2573,17 +3057,17 @@ export class Game {
       const dogTbMat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.85 });
       const dogTbGroup = new THREE.Group();
       dogTbGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), dogTbMat));
-      // Stem dots connecting bubble to head
+      // Stem dots trailing down toward dog's head (head at local 0.25, 0.14, 0)
       const dogDot1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), dogTbMat);
-      dogDot1.position.set(-0.08, -0.18, 0);
+      dogDot1.position.set(0, -0.15, 0);   // world ~(0.25, 0.40)
       dogTbGroup.add(dogDot1);
       const dogDot2 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), dogTbMat);
-      dogDot2.position.set(-0.14, -0.30, 0);
+      dogDot2.position.set(-0.03, -0.28, 0);  // world ~(0.22, 0.27) — just above head
       dogTbGroup.add(dogDot2);
       const boneSprite = this.makeBoneSprite();
-      boneSprite.position.set(0, 0.02, 0);
+      boneSprite.position.set(0, 0.02, 0.05);
       dogTbGroup.add(boneSprite);
-      dogTbGroup.position.set(0.2, 0.50, 0);
+      dogTbGroup.position.set(0.25, 0.55, 0);
       group.add(dogTbGroup);
 
       group.position.set((spawnX - this.cx) * TILE_SIZE, TILE_H, (spawnZ - this.cz) * TILE_SIZE);
@@ -2864,8 +3348,8 @@ export class Game {
     ctx.clearRect(0, 0, 64, 64);
     // Draw a bone shape: two circles connected by a rectangle
     ctx.fillStyle = "#D2B48C";
-    ctx.strokeStyle = "#8B7355";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#222222";
+    ctx.lineWidth = 3;
     // Shaft
     ctx.fillRect(20, 26, 24, 12);
     ctx.strokeRect(20, 26, 24, 12);
@@ -2876,8 +3360,9 @@ export class Game {
     ctx.beginPath(); ctx.arc(44, 26, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.arc(44, 38, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     const tex = new THREE.CanvasTexture(canvas);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-    sprite.scale.set(0.4, 0.4, 1);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    sprite.scale.set(0.3, 0.3, 1);
+    sprite.renderOrder = 1;
     return sprite;
   }
 
@@ -2917,7 +3402,7 @@ export class Game {
         this.relaxZoomElapsed += dt;
         const zoomT = Math.min(this.relaxZoomElapsed / INTRO_ZOOM_SECS, 1);
         const eased = easeOutQuad(zoomT);
-        this.frust = lerp(this.introFrustEnd, this.introFrustStart, eased);
+        this.frust = lerp(this.introFrustEnd, this.relaxFrustTarget, eased);
         // Pan camera from room center to mom
         const momWX = this.mom.position.x;
         const momWZ = this.mom.position.z;
@@ -2933,13 +3418,19 @@ export class Game {
           this.callbacks.onWon(this.level.winText);
         }
       }
+
+      // ── 3D relax scene updates ──
+      if (this.relaxSceneActive) {
+        this.updateRelaxScene(dt);
+      }
+
       this.renderer.render(this.scene, this.camera);
       return;
     }
 
     // Intro zoom-out phase
     if (this.introPhase) {
-      this.introElapsed += dt;
+      if (!this.introPaused) this.introElapsed += dt;
       if (this.introElapsed > INTRO_HOLD_SECS) {
         const zoomT = Math.min((this.introElapsed - INTRO_HOLD_SECS) / INTRO_ZOOM_SECS, 1);
         const eased = easeOutQuad(zoomT);
@@ -3017,7 +3508,8 @@ export class Game {
   private updateMom(dt: number) {
     if (!this.momPath || this.momPathIdx >= this.momPath.length) {
       // Idle — reset limbs and add gentle sway
-      if (this.momHead) this.momHead.position.y += Math.sin(this.frame * 0.015) * 0.0005;
+      // Gentle idle sway — use offset from base, not cumulative +=
+      if (this.momHead) this.momHead.position.y = this.momHeadBaseY + Math.sin(this.frame * 0.015) * 0.0005;
       if (this.momLeftLeg) this.momLeftLeg.rotation.x *= 0.9;
       if (this.momRightLeg) this.momRightLeg.rotation.x *= 0.9;
       if (this.momLeftArm) this.momLeftArm.rotation.x *= 0.9;
@@ -3304,6 +3796,304 @@ export class Game {
     }
   }
 
+  // ── Relax scene update — sitting pose, animations, TV ─────────────────────
+  // Phase durations in seconds
+  // 0=walk-step1, 1=walk-step2, 2=turn-and-sit, 3=head-settle,
+  // 4=left-leg-up, 5=right-leg-up, 6=arms
+  private static readonly RELAX_PHASE_DURATIONS = [0.6, 0.6, 0.8, 0.4, 0.5, 0.5, 0.5];
+
+  private updateRelaxScene(dt: number) {
+    const f = this.frame;
+
+    // ── Multi-phase relax animation ──
+    this.updateRelaxAnimation(dt);
+
+    // ── TV reality show animation ──
+    if (this.relaxTvScreen?.material instanceof THREE.MeshStandardMaterial) {
+      const mat = this.relaxTvScreen.material;
+      // Slowly cycling colors to simulate a reality show
+      const r = 0.3 + Math.sin(f * 0.013) * 0.2 + Math.sin(f * 0.031) * 0.1;
+      const g = 0.35 + Math.sin(f * 0.017 + 1.2) * 0.15 + Math.sin(f * 0.023) * 0.1;
+      const b = 0.4 + Math.sin(f * 0.011 + 2.4) * 0.2;
+      mat.color.setRGB(r, g, b);
+      mat.emissive.setRGB(r * 0.8, g * 0.8, b * 0.8);
+      // Occasional scene-change flash
+      if (mat.emissiveIntensity > 1.5) {
+        mat.emissiveIntensity = Math.max(1.2, mat.emissiveIntensity - dt * 4);
+      }
+    }
+    // Sync TV point light color
+    if (this.relaxTvLight && this.relaxTvScreen?.material instanceof THREE.MeshStandardMaterial) {
+      this.relaxTvLight.color.copy(this.relaxTvScreen.material.emissive);
+    }
+
+    // ── Glow pulses on clickable items ──
+    for (const gm of this.glowMeshes) {
+      if (gm.userData.isGlow && gm.material instanceof THREE.MeshStandardMaterial) {
+        gm.material.opacity = 0.15 + Math.sin(f * 0.06) * 0.15;
+        gm.material.emissiveIntensity = 0.4 + Math.sin(f * 0.06) * 0.3;
+      }
+    }
+
+    // ── Arm animations (cheese eating, wine drinking) ──
+    this.updateRelaxAnim(dt);
+  }
+
+  /**
+   * Multi-phase relax animation:
+   * 0: walk step 1 (goal → gap entry, NW direction)
+   * 1: walk step 2 (through gap, westward)
+   * 2: turn toward TV + sit down (thighs horizontal, calves vertical)
+   * 3: head settles back on cushion
+   * 4: left leg straightens onto coffee table
+   * 5: right leg straightens onto coffee table
+   * 6: arms drape over armrests
+   */
+  private updateRelaxAnimation(dt: number) {
+    if (this.relaxPhase < 0 || this.relaxPhase >= 7) return;
+
+    const durations = Game.RELAX_PHASE_DURATIONS;
+    const dur = durations[this.relaxPhase];
+    this.relaxPhaseT = Math.min(this.relaxPhaseT + dt / dur, 1);
+    const t = easeOutQuad(this.relaxPhaseT);
+
+    switch (this.relaxPhase) {
+      // ── Phase 0: Walk step 1 — from goal toward gap entry (NW on screen) ──
+      case 0: {
+        const start = this.relaxWalkStartPos!;
+        const wp = this.relaxWaypoints[0];
+        if (start && wp) {
+          this.mom.position.x = lerp(start.x, wp.x, t);
+          this.mom.position.z = lerp(start.z, wp.z, t);
+          // Face walking direction
+          const dx = wp.x - start.x;
+          const dz = wp.z - start.z;
+          this.mom.rotation.y = Math.atan2(dx, dz);
+          // Walk bob
+          if (t < 0.95) this.mom.position.y = start.y + Math.sin(t * Math.PI * 2) * 0.004;
+          // Leg swing
+          const swing = Math.sin(t * Math.PI * 4) * 0.35;
+          if (this.momLeftLeg) this.momLeftLeg.rotation.x = swing;
+          if (this.momRightLeg) this.momRightLeg.rotation.x = -swing;
+        }
+        break;
+      }
+      // ── Phase 1: Walk step 2 — through gap westward ──
+      case 1: {
+        const start = this.relaxWaypoints[0];
+        const wp = this.relaxWaypoints[1];
+        if (start && wp) {
+          this.mom.position.x = lerp(start.x, wp.x, t);
+          this.mom.position.z = lerp(start.z, wp.z, t);
+          const dx = wp.x - start.x;
+          const dz = wp.z - start.z;
+          this.mom.rotation.y = Math.atan2(dx, dz);
+          if (t < 0.95) this.mom.position.y = start.y + Math.sin(t * Math.PI * 2) * 0.004;
+          const swing = Math.sin(t * Math.PI * 4) * 0.35;
+          if (this.momLeftLeg) this.momLeftLeg.rotation.x = swing;
+          if (this.momRightLeg) this.momRightLeg.rotation.x = -swing;
+        }
+        break;
+      }
+      // ── Phase 2: Turn toward TV and squat down onto couch ──
+      case 2: {
+        const seat = this.relaxSeatPos;
+        const from = this.relaxWaypoints[1];
+        if (seat && from) {
+          // Slide from gap northward onto couch seat
+          this.mom.position.x = lerp(from.x, seat.x, t);
+          this.mom.position.z = lerp(from.z, seat.z, t);
+          // Turn to face TV (+Z direction, rotation.y = 0)
+          this.mom.rotation.y = lerp(this.relaxStartRotY, 0, Math.min(t * 2, 1));
+          // Squat arc: dip below standing height in first half,
+          // then rise to seat height in second half — never into the couch
+          const squat = Math.sin(t * Math.PI) * 0.06; // mid-squat dip
+          this.mom.position.y = lerp(from.y, seat.y, t) - squat * (1 - t);
+          // Thighs rotate to horizontal (pointing forward, +Z)
+          const thighAngle = lerp(0, -Math.PI / 2, t);
+          if (this.momLeftLeg) this.momLeftLeg.rotation.x = thighAngle;
+          if (this.momRightLeg) this.momRightLeg.rotation.x = thighAngle;
+          // Calves bend at knee to hang vertical
+          const calfAngle = lerp(0, Math.PI / 2, t);
+          if (this.momLeftCalf) this.momLeftCalf.rotation.x = calfAngle;
+          if (this.momRightCalf) this.momRightCalf.rotation.x = calfAngle;
+          // Torso stays vertical — no lean
+          this.mom.rotation.x = 0;
+        }
+        break;
+      }
+      // ── Phase 3: Head tilts slightly backward (leaning on back cushion) ──
+      case 3: {
+        if (this.momHead) this.momHead.rotation.x = lerp(0, 0.15, t);
+        break;
+      }
+      // ── Phase 4: Left leg lifts from knee — calf straightens onto coffee table ──
+      case 4: {
+        if (this.momLeftCalf) {
+          // From 90° bent (π/2) to straight (0) — extends leg fully horizontal
+          this.momLeftCalf.rotation.x = lerp(Math.PI / 2, 0, t);
+        }
+        break;
+      }
+      // ── Phase 5: Right leg lifts from knee — calf straightens onto coffee table ──
+      case 5: {
+        if (this.momRightCalf) {
+          this.momRightCalf.rotation.x = lerp(Math.PI / 2, 0, t);
+        }
+        break;
+      }
+      // ── Phase 6: Arms drape over armrests ──
+      case 6: {
+        if (this.momLeftArm) {
+          this.momLeftArm.rotation.z = lerp(0, 0.6, t);
+          this.momLeftArm.rotation.x = lerp(0, 0.4, t);
+        }
+        if (this.momRightArm) {
+          this.momRightArm.rotation.z = lerp(0, -0.6, t);
+          this.momRightArm.rotation.x = lerp(0, 0.4, t);
+        }
+        break;
+      }
+    }
+
+    // Advance to next phase when current completes
+    if (this.relaxPhaseT >= 1) {
+      if (this.relaxPhase === 0) {
+        // Snap to waypoint 1 position
+        this.mom.position.copy(this.relaxWaypoints[0]);
+      } else if (this.relaxPhase === 1) {
+        // Snap to waypoint 2 — store rotation at this point for the turn
+        this.mom.position.copy(this.relaxWaypoints[1]);
+        this.relaxStartRotY = this.mom.rotation.y;
+        // Reset leg swing to neutral before sitting
+        if (this.momLeftLeg) this.momLeftLeg.rotation.x = 0;
+        if (this.momRightLeg) this.momRightLeg.rotation.x = 0;
+      } else if (this.relaxPhase === 2) {
+        // Snap to seat position (computed at correct seat-top height)
+        if (this.relaxSeatPos) this.mom.position.copy(this.relaxSeatPos);
+        const couchFurn = this.level.furniture.find(f => f.label === "couch");
+        if (couchFurn) {
+          this.momPos.x = couchFurn.x + couchFurn.w / 2 - 0.5;
+          this.momPos.z = couchFurn.z + couchFurn.h / 2 - 0.5;
+        }
+      }
+      this.relaxPhase++;
+      this.relaxPhaseT = 0;
+    }
+  }
+
+  private updateRelaxAnim(dt: number) {
+    const anim = this.relaxAnim;
+    if (anim.type === "idle") return;
+
+    anim.elapsed += dt;
+    const t = Math.min(anim.elapsed / anim.duration, 1);
+    const eased = easeOutQuad(t);
+
+    switch (anim.type) {
+      case "cheese-reach": {
+        // Right arm reaches forward toward coffee table
+        if (this.momRightArm) {
+          this.momRightArm.rotation.x = lerp(0.2, -1.0, eased);
+          this.momRightArm.rotation.z = lerp(-0.3, -0.1, eased);
+        }
+        if (t >= 1) {
+          // Grab the cheese piece — hide it
+          if (anim.target) {
+            anim.target.visible = false;
+            // Remove from clickables
+            const idx = this.relaxClickables.indexOf(anim.target);
+            if (idx >= 0) this.relaxClickables.splice(idx, 1);
+            const pidx = this.relaxCheesePieces.indexOf(anim.target);
+            if (pidx >= 0) this.relaxCheesePieces.splice(pidx, 1);
+          }
+          this.relaxAnim = { type: "cheese-eat", elapsed: 0, duration: 0.6 };
+        }
+        break;
+      }
+      case "cheese-eat": {
+        // Bring arm up to mouth
+        if (this.momRightArm) {
+          this.momRightArm.rotation.x = lerp(-1.0, -0.3, eased);
+          this.momRightArm.rotation.z = lerp(-0.1, -0.15, eased);
+        }
+        // Head tilts forward slightly to "eat"
+        if (this.momHead && t > 0.3 && t < 0.7) {
+          this.momHead.rotation.x = lerp(-0.1, 0.05, (t - 0.3) / 0.4);
+        }
+        if (t >= 1) {
+          this.relaxAnim = { type: "cheese-return", elapsed: 0, duration: 0.4 };
+        }
+        break;
+      }
+      case "cheese-return": {
+        // Return arm to resting position
+        if (this.momRightArm) {
+          this.momRightArm.rotation.x = lerp(-0.3, 0.2, eased);
+          this.momRightArm.rotation.z = lerp(-0.15, -0.3, eased);
+        }
+        if (this.momHead) this.momHead.rotation.x = lerp(0.05, -0.1, eased);
+        if (t >= 1) {
+          this.relaxAnim = { type: "idle", elapsed: 0, duration: 0 };
+        }
+        break;
+      }
+      case "wine-reach": {
+        // Left arm reaches to the side (toward side table)
+        if (this.momLeftArm) {
+          this.momLeftArm.rotation.x = lerp(0.2, -0.4, eased);
+          this.momLeftArm.rotation.z = lerp(0.3, 0.6, eased);
+        }
+        if (t >= 1) {
+          this.relaxAnim = { type: "wine-drink", elapsed: 0, duration: 0.8 };
+        }
+        break;
+      }
+      case "wine-drink": {
+        // Bring arm from side to mouth (across body and up)
+        if (this.momLeftArm) {
+          // Phase 1: bring to mouth (first 50%)
+          if (t < 0.5) {
+            const subT = easeOutQuad(t / 0.5);
+            this.momLeftArm.rotation.x = lerp(-0.4, -0.6, subT);
+            this.momLeftArm.rotation.z = lerp(0.6, 0.1, subT);
+          }
+          // Phase 2: tip and hold (50-100%)
+          else {
+            const subT = (t - 0.5) / 0.5;
+            this.momLeftArm.rotation.x = lerp(-0.6, -0.5, subT);
+            // Tilt wrist/glass
+            this.momLeftArm.rotation.z = lerp(0.1, 0.15, Math.sin(subT * Math.PI) * 0.5 + 0.5);
+          }
+        }
+        // Head tilts back for drinking
+        if (this.momHead) {
+          if (t > 0.3 && t < 0.8) {
+            this.momHead.rotation.x = lerp(-0.1, -0.2, (t - 0.3) / 0.5);
+          } else if (t >= 0.8) {
+            this.momHead.rotation.x = lerp(-0.2, -0.1, (t - 0.8) / 0.2);
+          }
+        }
+        if (t >= 1) {
+          this.relaxAnim = { type: "wine-return", elapsed: 0, duration: 0.5 };
+        }
+        break;
+      }
+      case "wine-return": {
+        // Return arm to resting position
+        if (this.momLeftArm) {
+          this.momLeftArm.rotation.x = lerp(-0.5, 0.2, eased);
+          this.momLeftArm.rotation.z = lerp(0.15, 0.3, eased);
+        }
+        if (this.momHead) this.momHead.rotation.x = lerp(-0.1, -0.1, eased);
+        if (t >= 1) {
+          this.relaxAnim = { type: "idle", elapsed: 0, duration: 0 };
+        }
+        break;
+      }
+    }
+  }
+
   private checkGoal() {
     if (this.won) return;
     const lvl = this.level;
@@ -3341,12 +4131,312 @@ export class Game {
     this.introCompleteCallback = cb;
   }
 
+  setIntroPaused(v: boolean) {
+    this.introPaused = v;
+  }
+
   setRelaxZoomCallback(cb: () => void) {
     this.relaxZoomCallback = cb;
   }
 
   setDeferredTapHandler(cb: (x: number, y: number) => void) {
     this.onDeferredTap = cb;
+  }
+
+  setRelaxClickCallback(cb: (itemId: string, feedback: string, screenX: number, screenY: number) => void) {
+    this.relaxClickCallback = cb;
+  }
+
+  /** Called from GameView after zoom completes for 3D relax scenes */
+  enterRelaxScene() {
+    this.relaxSceneActive = true;
+
+    // Compute walk waypoints: goal → gap between couch & coffee table → couch front
+    const couchGroup = this.furnitureGroups.find(g => g.userData.label === "couch");
+    const coffeeTableGroup = this.furnitureGroups.find(g => g.userData.label === "coffeeTable");
+    const couchFurn = this.level.furniture.find(f => f.label === "couch");
+
+    const momY = this.mom.position.y;
+    // The gap between couch south edge and coffee table north edge
+    const gapZ = couchGroup && coffeeTableGroup
+      ? (couchGroup.position.z + (couchFurn ? couchFurn.h * TILE_SIZE * 0.5 : 0.5)
+         + coffeeTableGroup.position.z - (this.level.furniture.find(f => f.label === "coffeeTable")?.h ?? 2) * TILE_SIZE * 0.5) / 2
+      : this.mom.position.z + 0.3;
+
+    // East end of the gap (entry point — just west of goal)
+    const gapEntryX = couchGroup
+      ? couchGroup.position.x + (couchFurn ? couchFurn.w * TILE_SIZE * 0.5 : 1.0) + TILE_SIZE * 0.5
+      : this.mom.position.x - 0.3;
+    // Center of couch in x (where she'll sit)
+    const couchCenterX = couchGroup ? couchGroup.position.x : this.mom.position.x - 1.0;
+    // Seat z: center of the couch (she sits facing TV/south)
+    const seatZ = couchGroup ? couchGroup.position.z : gapZ - 0.3;
+    // Seat Y: Mom's hip bottom (local y=0.30) rests on couch seat top surface
+    // Couch seat top = group.y(0.15) + seat center(0.25) + half-thickness(0.08) = 0.48
+    const seatTopY = (couchGroup?.position.y ?? TILE_H) + 0.33;
+    const seatedMomY = seatTopY - 0.30; // hip pivot sits on seat surface
+
+    this.relaxWaypoints = [
+      new THREE.Vector3(gapEntryX, momY, gapZ),       // step 1: into the gap
+      new THREE.Vector3(couchCenterX, momY, gapZ),     // step 2: walk west through gap
+    ];
+    this.relaxSeatPos = new THREE.Vector3(couchCenterX, seatedMomY, seatZ);
+    this.relaxWalkStartPos = this.mom.position.clone();
+    this.relaxStartRotY = this.mom.rotation.y;
+
+    // Kick off phase 0 (first walk step)
+    this.relaxPhase = 0;
+    this.relaxPhaseT = 0;
+
+    // Find existing furniture groups by label (coffeeTableGroup already declared above)
+    const tvGroup = this.furnitureGroups.find(g => g.userData.label === "tv");
+    const sideTableGroup = this.furnitureGroups.find(g => g.userData.label === "sideTable");
+
+    // ── Turn on the TV ──
+    if (tvGroup) {
+      // Find the screen face mesh (the emissive one) inside the tvUnit group
+      tvGroup.traverse((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+          const mat = child.material;
+          if (mat.emissive && mat.emissiveIntensity > 0.3 && mat.color.getHexString() === "0a0a2a") {
+            // This is the TV screen face — make it glow
+            this.relaxTvScreen = child;
+            child.material = new THREE.MeshStandardMaterial({
+              color: "#446688",
+              emissive: "#446688",
+              emissiveIntensity: 1.2,
+              roughness: 0.3,
+            });
+            child.userData.relaxItem = "tv";
+            this.relaxClickables.push(child);
+          }
+        }
+      });
+      // Add a point light to simulate TV glow
+      const tvLight = new THREE.PointLight("#6688AA", 0.6, 3);
+      tvLight.position.set(0, 0.6, 0.2);
+      tvGroup.add(tvLight);
+      this.relaxTvLight = tvLight;
+    }
+
+    // ── Wine glass + wine bottle on side table ──
+    if (sideTableGroup) {
+      const glassMat = new THREE.MeshStandardMaterial({ color: "#E8F0F0", roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.7 });
+
+      // ── Wine glass (bigger, closer to couch side) ──
+      const wineGroup = new THREE.Group();
+
+      // Base
+      const wBase = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.008, 8), glassMat);
+      wBase.position.y = 0;
+      wineGroup.add(wBase);
+
+      // Stem
+      const wStem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.10, 6), glassMat);
+      wStem.position.y = 0.054;
+      wineGroup.add(wStem);
+
+      // Bowl (open cylinder)
+      const wBowl = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.025, 0.10, 10, 1, true),
+        new THREE.MeshStandardMaterial({ color: "#E0F0F0", roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.5 })
+      );
+      wBowl.position.y = 0.155;
+      wineGroup.add(wBowl);
+
+      // Wine liquid
+      const wLiquid = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.022, 0.07, 10),
+        new THREE.MeshStandardMaterial({ color: "#8B1A2A", emissive: "#3A0808", emissiveIntensity: 0.3, roughness: 0.5 })
+      );
+      wLiquid.position.y = 0.14;
+      wineGroup.add(wLiquid);
+
+      // Position glass on couch-side of table, on top surface
+      wineGroup.position.set(-0.02, 0.34, -0.06);
+      wineGroup.userData.relaxItem = "wine";
+      sideTableGroup.add(wineGroup);
+      this.relaxWineGlass = wineGroup;
+      this.relaxClickables.push(wineGroup);
+
+      // Invisible hitbox for easy clicking
+      const wineHitbox = new THREE.Mesh(
+        new THREE.SphereGeometry(0.12, 8, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      wineHitbox.position.y = 0.10;
+      wineGroup.add(wineHitbox);
+
+      // Glow hint on glass
+      const wineGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 8, 8),
+        new THREE.MeshStandardMaterial({ color: "#FFD700", emissive: "#FFD700", emissiveIntensity: 0.6, transparent: true, opacity: 0.3 })
+      );
+      wineGlow.position.copy(wineGroup.position);
+      wineGlow.position.y += 0.10;
+      wineGlow.userData.isGlow = true;
+      sideTableGroup.add(wineGlow);
+      this.glowMeshes.push(wineGlow);
+
+      // ── Wine bottle next to glass ──
+      const bottleGroup = new THREE.Group();
+      const bottleMat = new THREE.MeshStandardMaterial({ color: "#2A4A2A", roughness: 0.3, metalness: 0.1 });
+
+      // Body
+      const bBody = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.18, 8), bottleMat);
+      bBody.position.y = 0.09;
+      bottleGroup.add(bBody);
+
+      // Shoulder taper
+      const bShoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.035, 0.04, 8), bottleMat);
+      bShoulder.position.y = 0.20;
+      bottleGroup.add(bShoulder);
+
+      // Neck
+      const bNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.08, 6), bottleMat);
+      bNeck.position.y = 0.26;
+      bottleGroup.add(bNeck);
+
+      // Cork/cap
+      const bCork = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.014, 0.013, 0.02, 6),
+        new THREE.MeshStandardMaterial({ color: "#D4AF37", roughness: 0.4, metalness: 0.3 })
+      );
+      bCork.position.y = 0.31;
+      bottleGroup.add(bCork);
+
+      // Label on body
+      const bLabel = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.05, 0.06),
+        new THREE.MeshStandardMaterial({ color: "#F5F0E0", roughness: 0.8 })
+      );
+      bLabel.position.set(0, 0.10, 0.036);
+      bottleGroup.add(bLabel);
+
+      bottleGroup.position.set(0.06, 0.34, 0.02);
+      sideTableGroup.add(bottleGroup);
+    }
+
+    // ── Build cheese tray on coffee table ──
+    if (coffeeTableGroup) {
+      const trayGroup = new THREE.Group();
+
+      // Wooden tray/board
+      const tray = new THREE.Mesh(
+        new THREE.BoxGeometry(0.2, 0.015, 0.12),
+        new THREE.MeshStandardMaterial({ color: "#B8956A", roughness: 0.8 })
+      );
+      tray.position.y = 0;
+      tray.castShadow = true;
+      trayGroup.add(tray);
+
+      // Cheese pieces (4 small wedges)
+      const cheeseMat = new THREE.MeshStandardMaterial({ color: "#F0D050", roughness: 0.6 });
+      const cheesePositions = [
+        { x: -0.05, z: -0.02 },
+        { x: 0.03, z: -0.03 },
+        { x: -0.02, z: 0.03 },
+        { x: 0.06, z: 0.02 },
+      ];
+      cheesePositions.forEach((pos, i) => {
+        const piece = new THREE.Mesh(
+          new THREE.BoxGeometry(0.03, 0.02, 0.025),
+          cheeseMat.clone()
+        );
+        piece.position.set(pos.x, 0.018, pos.z);
+        piece.rotation.y = Math.random() * Math.PI;
+        piece.castShadow = true;
+        piece.userData.relaxItem = "cheese";
+        piece.userData.cheeseIdx = i;
+        trayGroup.add(piece);
+        this.relaxCheesePieces.push(piece);
+        this.relaxClickables.push(piece);
+      });
+
+      // Position tray on top of coffee table
+      trayGroup.position.set(0, 0.22, 0);
+      coffeeTableGroup.add(trayGroup);
+
+      // Add glow hint for cheese
+      const cheeseGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 8, 8),
+        new THREE.MeshStandardMaterial({ color: "#FFD700", emissive: "#FFD700", emissiveIntensity: 0.6, transparent: true, opacity: 0.3 })
+      );
+      cheeseGlow.position.set(0, 0.28, 0);
+      cheeseGlow.userData.isGlow = true;
+      coffeeTableGroup.add(cheeseGlow);
+      this.glowMeshes.push(cheeseGlow);
+    }
+
+    // Hide the goal ring
+    if (this.goalRing) this.goalRing.visible = false;
+  }
+
+  /** Handle click during 3D relax scene — returns true if something was clicked */
+  handleRelaxClick(clientX: number, clientY: number): boolean {
+    if (!this.relaxSceneActive) return false;
+    if (this.relaxPhase < 7) return false; // relax animation still playing
+    if (this.relaxAnim.type !== "idle") return false; // arm animation in progress
+
+    const rect = this.element.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(mouse, this.camera);
+
+    // Collect all clickable meshes (need to traverse groups)
+    const clickTargets: THREE.Object3D[] = [];
+    for (const obj of this.relaxClickables) {
+      if (obj instanceof THREE.Group) {
+        obj.traverse((c: THREE.Object3D) => { if (c instanceof THREE.Mesh) clickTargets.push(c); });
+      } else {
+        clickTargets.push(obj);
+      }
+    }
+
+    const hits = ray.intersectObjects(clickTargets, false);
+    if (hits.length === 0) return false;
+
+    // Walk up to find the userData.relaxItem
+    let hit = hits[0].object;
+    let itemId: string | undefined;
+    while (hit) {
+      if (hit.userData?.relaxItem) { itemId = hit.userData.relaxItem; break; }
+      hit = hit.parent as THREE.Object3D;
+    }
+    if (!itemId) return false;
+
+    if (itemId === "cheese") {
+      // Find which cheese piece was clicked
+      const cheeseMesh = this.relaxCheesePieces.find(p => {
+        let obj: THREE.Object3D | null = hits[0].object;
+        while (obj) { if (obj === p) return true; obj = obj.parent; }
+        return false;
+      });
+      if (!cheeseMesh) return false;
+      this.relaxAnim = { type: "cheese-reach", elapsed: 0, duration: 0.5, target: cheeseMesh };
+      this.relaxClickCallback?.("cheese", "That's some Goud-a cheese!", clientX, clientY);
+      return true;
+    }
+
+    if (itemId === "wine") {
+      this.relaxAnim = { type: "wine-reach", elapsed: 0, duration: 0.5 };
+      this.relaxClickCallback?.("wine", "Momma needed her bottle", clientX, clientY);
+      return true;
+    }
+
+    if (itemId === "tv") {
+      // Flash the TV
+      if (this.relaxTvScreen?.material instanceof THREE.MeshStandardMaterial) {
+        this.relaxTvScreen.material.emissiveIntensity = 3.0;
+      }
+      this.relaxClickCallback?.("tv", "*drama!*", clientX, clientY);
+      return true;
+    }
+
+    return false;
   }
 
   handleTap(clientX: number, clientY: number, decoyMode: false | "throw"): false | "thrown" {
@@ -3425,17 +4515,17 @@ export class Game {
     return g;
   }
 
-  /** Project Mom's head into screen (CSS pixel) coordinates */
+  /** Project Mom's position into screen (CSS pixel) coordinates, offset upward in screen-space */
   getMomScreenPos(): { x: number; y: number } {
-    const headWorldY = this.mom.position.y + 0.9; // approximate head height
-    const v = new THREE.Vector3(this.mom.position.x, headWorldY, this.mom.position.z);
+    // Project mom's base position (avoids isometric horizontal shift from world-space Y offset)
+    const v = new THREE.Vector3(this.mom.position.x, this.mom.position.y, this.mom.position.z);
     v.project(this.camera);
     const w = this.renderer.domElement.clientWidth;
     const h = this.renderer.domElement.clientHeight;
-    return {
-      x: (v.x * 0.5 + 0.5) * w,
-      y: (-v.y * 0.5 + 0.5) * h,
-    };
+    const screenX = (v.x * 0.5 + 0.5) * w;
+    const screenY = (-v.y * 0.5 + 0.5) * h;
+    // Offset upward in screen-space to position above her head
+    return { x: screenX, y: screenY - 80 };
   }
 
   destroy() {
