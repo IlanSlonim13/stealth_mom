@@ -163,6 +163,9 @@ export class Game {
   private relaxClickables: THREE.Object3D[] = [];
   private relaxCheesePieces: THREE.Mesh[] = [];
   private relaxWineGlass: THREE.Group | null = null;
+  private relaxWineGlassOrigParent: THREE.Object3D | null = null;
+  private relaxWineGlassOrigPos = new THREE.Vector3();
+  private relaxWineGlassOrigQuat = new THREE.Quaternion();
   private relaxTvScreen: THREE.Mesh | null = null;
   private relaxTvLight: THREE.PointLight | null = null;
 
@@ -1611,17 +1614,85 @@ export class Game {
       case "couch": {
         const fab = std(f.col, 0.75);
         const fabDark = std(f.col + "AA", 0.8);
-        add(new THREE.BoxGeometry(tw, 0.16, th), fab, 0.25); // seat
-        add(new THREE.BoxGeometry(tw, 0.3, 0.14), fabDark, 0.44).position.z = th / 2 - 0.07; // back (south side, sitter faces north)
-        // Arms
-        add(new THREE.BoxGeometry(0.14, 0.22, th), fabDark, 0.36).position.x = -tw / 2 + 0.07;
-        add(new THREE.BoxGeometry(0.14, 0.22, th), fabDark, 0.36).position.x =  tw / 2 - 0.07;
-        // Cushion lines
-        for (let i = 0; i < f.w; i++) {
-          const line = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.17, th * 0.8),
-            std("#00000022", 0.9));
-          line.position.set(-tw / 2 + (i + 0.5) * tw / f.w, 0.26, 0);
-          g.add(line);
+        const fabLight = std(f.col, 0.85, 0.02);
+
+        // Base/frame (hidden under cushions, slightly visible at edges)
+        add(new THREE.BoxGeometry(tw, 0.10, th), fabDark, 0.20);
+
+        // ── Seat cushions — puffy rounded boxes per seat ──
+        const numCush = f.w;
+        const armW = 0.12;
+        const innerW = tw - armW * 2;
+        const gap = 0.015;
+        const cushW = (innerW - gap * (numCush - 1)) / numCush;
+        const cushH = 0.10;
+        const cushD = th * 0.65;
+        for (let i = 0; i < numCush; i++) {
+          const cx = -innerW / 2 + cushW / 2 + i * (cushW + gap);
+          // Main cushion body (slightly rounded via box)
+          const cush = new THREE.Mesh(
+            new THREE.BoxGeometry(cushW - 0.01, cushH, cushD),
+            fabLight
+          );
+          cush.position.set(cx, 0.30, -th * 0.08);
+          cush.castShadow = true; cush.receiveShadow = true;
+          g.add(cush);
+          // Puffy top (cylinder for rounded look)
+          const puff = new THREE.Mesh(
+            new THREE.CylinderGeometry(cushW * 0.45, cushW * 0.48, cushD, 8, 1, false, 0, Math.PI),
+            fab
+          );
+          puff.rotation.x = Math.PI / 2;
+          puff.rotation.z = Math.PI / 2;
+          puff.position.set(cx, 0.35, -th * 0.08);
+          puff.castShadow = true;
+          g.add(puff);
+        }
+
+        // ── Back cushions — taller, softer, one per seat ──
+        for (let i = 0; i < numCush; i++) {
+          const cx = -innerW / 2 + cushW / 2 + i * (cushW + gap);
+          const backCush = new THREE.Mesh(
+            new THREE.BoxGeometry(cushW - 0.02, 0.22, 0.10),
+            fab
+          );
+          backCush.position.set(cx, 0.40, th / 2 - 0.08);
+          backCush.castShadow = true; backCush.receiveShadow = true;
+          g.add(backCush);
+          // Rounded top for back cushion
+          const backPuff = new THREE.Mesh(
+            new THREE.SphereGeometry(cushW * 0.42, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
+            fab
+          );
+          backPuff.rotation.y = Math.PI / 2;
+          backPuff.position.set(cx, 0.51, th / 2 - 0.08);
+          backPuff.castShadow = true;
+          g.add(backPuff);
+        }
+
+        // ── Back frame (behind cushions) ──
+        add(new THREE.BoxGeometry(tw, 0.35, 0.08), fabDark, 0.42).position.z = th / 2 - 0.02;
+
+        // ── Arms — thick, padded, rounded tops (Ciello-style) ──
+        for (const side of [-1, 1]) {
+          const ax = side * (tw / 2 - armW / 2);
+          // Arm body
+          const arm = new THREE.Mesh(
+            new THREE.BoxGeometry(armW, 0.25, th),
+            fabDark
+          );
+          arm.position.set(ax, 0.33, 0);
+          arm.castShadow = true; arm.receiveShadow = true;
+          g.add(arm);
+          // Rounded arm top
+          const armTop = new THREE.Mesh(
+            new THREE.CylinderGeometry(armW / 2 - 0.01, armW / 2, th, 8),
+            fab
+          );
+          armTop.rotation.x = Math.PI / 2;
+          armTop.position.set(ax, 0.46, 0);
+          armTop.castShadow = true;
+          g.add(armTop);
         }
         break;
       }
@@ -4078,11 +4149,18 @@ export class Game {
       }
       case "wine-reach": {
         // Left arm reaches to the side (toward side table)
+        // Resting pose from phase 6: x=0.4, z=0.6
         if (this.momLeftArm) {
-          this.momLeftArm.rotation.x = lerp(0.2, -0.4, eased);
-          this.momLeftArm.rotation.z = lerp(0.3, 0.6, eased);
+          this.momLeftArm.rotation.x = lerp(0.4, -0.4, eased);
+          this.momLeftArm.rotation.z = lerp(0.6, 0.8, eased);
         }
         if (t >= 1) {
+          // Attach wine glass to mom's left arm
+          if (this.relaxWineGlass && this.momLeftArm) {
+            this.momLeftArm.add(this.relaxWineGlass);
+            this.relaxWineGlass.position.set(0, -0.28, 0);
+            this.relaxWineGlass.rotation.set(0, 0, 0);
+          }
           this.relaxAnim = { type: "wine-drink", elapsed: 0, duration: 0.8 };
         }
         break;
@@ -4093,23 +4171,31 @@ export class Game {
           // Phase 1: bring to mouth (first 50%)
           if (t < 0.5) {
             const subT = easeOutQuad(t / 0.5);
-            this.momLeftArm.rotation.x = lerp(-0.4, -0.6, subT);
-            this.momLeftArm.rotation.z = lerp(0.6, 0.1, subT);
+            this.momLeftArm.rotation.x = lerp(-0.4, -1.2, subT);
+            this.momLeftArm.rotation.z = lerp(0.8, 0.1, subT);
           }
-          // Phase 2: tip and hold (50-100%)
+          // Phase 2: tip glass and drink (50-100%)
           else {
             const subT = (t - 0.5) / 0.5;
-            this.momLeftArm.rotation.x = lerp(-0.6, -0.5, subT);
-            // Tilt wrist/glass
+            this.momLeftArm.rotation.x = lerp(-1.2, -1.0, subT);
             this.momLeftArm.rotation.z = lerp(0.1, 0.15, Math.sin(subT * Math.PI) * 0.5 + 0.5);
+          }
+        }
+        // Tilt wine glass to pour into mouth
+        if (this.relaxWineGlass) {
+          if (t > 0.4 && t < 0.85) {
+            const pourT = (t - 0.4) / 0.45;
+            this.relaxWineGlass.rotation.z = lerp(0, 0.6, Math.sin(pourT * Math.PI));
+          } else {
+            this.relaxWineGlass.rotation.z = 0;
           }
         }
         // Head tilts back for drinking
         if (this.momHead) {
           if (t > 0.3 && t < 0.8) {
-            this.momHead.rotation.x = lerp(-0.1, -0.2, (t - 0.3) / 0.5);
+            this.momHead.rotation.x = lerp(-0.1, -0.25, (t - 0.3) / 0.5);
           } else if (t >= 0.8) {
-            this.momHead.rotation.x = lerp(-0.2, -0.1, (t - 0.8) / 0.2);
+            this.momHead.rotation.x = lerp(-0.25, -0.1, (t - 0.8) / 0.2);
           }
         }
         if (t >= 1) {
@@ -4118,13 +4204,19 @@ export class Game {
         break;
       }
       case "wine-return": {
-        // Return arm to resting position
+        // Return arm to resting position (x=0.4, z=0.6 from phase 6)
         if (this.momLeftArm) {
-          this.momLeftArm.rotation.x = lerp(-0.5, 0.2, eased);
-          this.momLeftArm.rotation.z = lerp(0.15, 0.3, eased);
+          this.momLeftArm.rotation.x = lerp(-1.0, 0.4, eased);
+          this.momLeftArm.rotation.z = lerp(0.15, 0.6, eased);
         }
         if (this.momHead) this.momHead.rotation.x = lerp(-0.1, -0.1, eased);
         if (t >= 1) {
+          // Return wine glass to side table
+          if (this.relaxWineGlass && this.relaxWineGlassOrigParent) {
+            this.relaxWineGlassOrigParent.add(this.relaxWineGlass);
+            this.relaxWineGlass.position.copy(this.relaxWineGlassOrigPos);
+            this.relaxWineGlass.quaternion.copy(this.relaxWineGlassOrigQuat);
+          }
           this.relaxAnim = { type: "idle", elapsed: 0, duration: 0 };
         }
         break;
@@ -4295,6 +4387,9 @@ export class Game {
       wineGroup.userData.relaxItem = "wine";
       sideTableGroup.add(wineGroup);
       this.relaxWineGlass = wineGroup;
+      this.relaxWineGlassOrigParent = sideTableGroup;
+      this.relaxWineGlassOrigPos.copy(wineGroup.position);
+      this.relaxWineGlassOrigQuat.copy(wineGroup.quaternion);
       this.relaxClickables.push(wineGroup);
 
       // Invisible hitbox for easy clicking
