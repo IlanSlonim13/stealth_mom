@@ -307,33 +307,36 @@ export function GameView() {
                 left: momScreenPos.x,
                 top: momScreenPos.y,
                 transform: "translateY(-100%)",
-                transformOrigin: "bottom left",
-                display: "flex", flexDirection: "column", alignItems: "flex-start",
-                animation: "bubbleIn 0.4s ease-out 0.3s both",
               }}>
                 <div style={{
-                  position: "relative",
-                  background: "rgba(255,255,255,0.95)",
-                  borderRadius: 18,
-                  padding: "16px 26px",
-                  maxWidth: 320,
+                  display: "flex", flexDirection: "column", alignItems: "flex-start",
+                  transformOrigin: "bottom left",
+                  animation: "bubbleIn 0.4s ease-out 0.3s both",
                 }}>
-                  <p style={{
-                    fontFamily: "Georgia, serif", fontSize: 18,
-                    color: "#2A1A2A", margin: 0, textAlign: "center",
-                    fontStyle: "italic", lineHeight: 1.5,
+                  <div style={{
+                    position: "relative",
+                    background: "rgba(255,255,255,0.95)",
+                    borderRadius: 18,
+                    padding: "16px 26px",
+                    maxWidth: 320,
                   }}>
-                    {quote}
-                  </p>
+                    <p style={{
+                      fontFamily: "Georgia, serif", fontSize: 18,
+                      color: "#2A1A2A", margin: 0, textAlign: "center",
+                      fontStyle: "italic", lineHeight: 1.5,
+                    }}>
+                      {quote}
+                    </p>
+                  </div>
+                  {/* Triangle pointer at bottom-left, pointing down */}
+                  <div style={{
+                    marginLeft: 10,
+                    width: 0, height: 0,
+                    borderLeft: "10px solid transparent",
+                    borderRight: "10px solid transparent",
+                    borderTop: "10px solid rgba(255,255,255,0.95)",
+                  }} />
                 </div>
-                {/* Triangle pointer at bottom-left, pointing down */}
-                <div style={{
-                  marginLeft: 10,
-                  width: 0, height: 0,
-                  borderLeft: "10px solid transparent",
-                  borderRight: "10px solid transparent",
-                  borderTop: "10px solid rgba(255,255,255,0.95)",
-                }} />
               </div>
             )
           )}
