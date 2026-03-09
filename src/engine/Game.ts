@@ -2507,6 +2507,219 @@ export class Game {
         }
         break;
       }
+      case "chinaCredenza": {
+        const ccWood = std(f.col, 0.65);
+        // Main body — low & wide
+        add(new THREE.BoxGeometry(tw, 0.40, th), ccWood, 0.24);
+        // Top surface
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std(f.col, 0.5), 0.455);
+        // Back panel (display backdrop)
+        const backPanel = new THREE.Mesh(
+          new THREE.BoxGeometry(tw - 0.02, 0.50, 0.02), std("#4A2A10", 0.7)
+        );
+        backPanel.position.set(0, 0.70, th / 2 - 0.01);
+        backPanel.castShadow = true; g.add(backPanel);
+        // Display plates standing vertically on top
+        const plateMat = std("#F0F0E8", 0.3, 0.1);
+        const plateAccent = std("#2244AA", 0.4);
+        const plateSpacing = tw / 5;
+        for (let i = 0; i < 4; i++) {
+          const px = -tw / 2 + plateSpacing * (i + 1);
+          // Plate disc (vertical)
+          const plate = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 0.006, 12), plateMat
+          );
+          plate.rotation.x = Math.PI * 0.12; // lean back slightly
+          plate.rotation.z = Math.PI / 2;
+          plate.position.set(px, 0.54, th / 2 - 0.04);
+          g.add(plate);
+          // Blue pattern ring on plate
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(0.04, 0.004, 6, 12), plateAccent
+          );
+          ring.rotation.x = Math.PI * 0.12;
+          ring.rotation.z = Math.PI / 2;
+          ring.position.set(px, 0.54, th / 2 - 0.04);
+          g.add(ring);
+        }
+        // Short legs
+        const ccLegGeo = new THREE.BoxGeometry(0.04, 0.04, 0.04);
+        for (const [lx, lz] of [
+          [-tw/2+0.05, -th/2+0.04], [tw/2-0.05, -th/2+0.04],
+          [-tw/2+0.05, th/2-0.04], [tw/2-0.05, th/2-0.04],
+        ]) {
+          const leg = new THREE.Mesh(ccLegGeo, ccWood);
+          leg.position.set(lx, 0.02, lz);
+          leg.castShadow = true; g.add(leg);
+        }
+        break;
+      }
+      case "barChair": {
+        const bcMat = std(f.col || "#555555", 0.5, 0.2);
+        // Tall legs (bar height)
+        const bcLegH = 0.40;
+        const bcLegGeo = new THREE.CylinderGeometry(0.012, 0.012, bcLegH, 4);
+        for (const [lx, lz] of [[-0.05,-0.05],[0.05,-0.05],[-0.05,0.05],[0.05,0.05]]) {
+          const leg = new THREE.Mesh(bcLegGeo, bcMat);
+          leg.position.set(lx, bcLegH / 2, lz);
+          leg.castShadow = true; g.add(leg);
+        }
+        // Footrest ring
+        const footrest = new THREE.Mesh(
+          new THREE.TorusGeometry(0.06, 0.006, 4, 8), bcMat
+        );
+        footrest.rotation.x = Math.PI / 2;
+        footrest.position.y = 0.15;
+        g.add(footrest);
+        // Seat (round)
+        const seat = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.07, 0.06, 0.04, 8),
+          std(f.col || "#555555", 0.6)
+        );
+        seat.position.y = bcLegH + 0.02;
+        seat.castShadow = true; g.add(seat);
+        break;
+      }
+      case "gasStove": {
+        // Kitchen stove/oven with gas burners + grates
+        add(new THREE.BoxGeometry(tw, 0.4, th), std("#333333", 0.5, 0.15), 0.2); // body
+        add(new THREE.BoxGeometry(tw + 0.02, 0.03, th + 0.02), std("#444444", 0.4, 0.2), 0.42); // cooktop
+        // Gas burner rings with blue flame hints
+        const gsBurnerMat = std("#222222", 0.3, 0.3);
+        const gsFlameMat = new THREE.MeshStandardMaterial({
+          color: "#2244CC", emissive: "#1122AA", emissiveIntensity: 0.4,
+          transparent: true, opacity: 0.6,
+        });
+        [[-0.1, -0.08], [0.1, -0.08], [-0.1, 0.08], [0.1, 0.08]].forEach(([bx, bz]) => {
+          // Burner ring
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 6, 12), gsBurnerMat);
+          ring.rotation.x = Math.PI / 2;
+          ring.position.set(bx, 0.44, bz);
+          g.add(ring);
+          // Gas flame ring (inner, smaller)
+          const flame = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.005, 6, 12), gsFlameMat);
+          flame.rotation.x = Math.PI / 2;
+          flame.position.set(bx, 0.445, bz);
+          g.add(flame);
+          // Cast iron grate (cross pattern)
+          const grateMat = std("#1A1A1A", 0.6, 0.2);
+          for (const rot of [0, Math.PI / 2]) {
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.008, 0.008), grateMat);
+            bar.rotation.y = rot;
+            bar.position.set(bx, 0.455, bz);
+            g.add(bar);
+          }
+        });
+        // Control knobs on front
+        const knobMat = std("#888888", 0.3, 0.4);
+        for (let i = 0; i < 4; i++) {
+          const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.01, 8), knobMat);
+          knob.rotation.x = Math.PI / 2;
+          knob.position.set(-0.12 + i * 0.08, 0.32, -th / 2 - 0.005);
+          g.add(knob);
+        }
+        // Oven door handle
+        const gsHandle = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.6, 0.015, 0.015), std("#888", 0.3, 0.4));
+        gsHandle.position.set(0, 0.28, -th / 2 - 0.01);
+        g.add(gsHandle);
+        // Oven window
+        const gsOvenWindow = new THREE.Mesh(new THREE.BoxGeometry(tw * 0.5, 0.12, 0.01),
+          new THREE.MeshStandardMaterial({ color: "#1A1A2A", roughness: 0.1, metalness: 0.2 }));
+        gsOvenWindow.position.set(0, 0.15, -th / 2 - 0.005);
+        g.add(gsOvenWindow);
+        break;
+      }
+      case "wallCabinet": {
+        const cabMat = std(f.col || "#E8DDD0", 0.6);
+        const cabDark = std("#C8B8A0", 0.65);
+        // Cabinet box (mounted high on wall)
+        const cabH = 0.25;
+        add(new THREE.BoxGeometry(tw, cabH, th), cabMat, 0.80);
+        // Cabinet door panels
+        const numDoors = Math.max(1, Math.round(f.w / 2));
+        const cabDoorW = (tw - 0.02) / numDoors;
+        for (let i = 0; i < numDoors; i++) {
+          const dx = -tw / 2 + 0.01 + cabDoorW * i + cabDoorW / 2;
+          const cabDoor = new THREE.Mesh(
+            new THREE.BoxGeometry(cabDoorW - 0.02, cabH - 0.04, 0.015), cabDark
+          );
+          cabDoor.position.set(dx, 0.80, -th / 2 - 0.005);
+          g.add(cabDoor);
+          // Knob
+          const cabKnob = new THREE.Mesh(
+            new THREE.SphereGeometry(0.01, 5, 5), std("#C0A040", 0.3, 0.4)
+          );
+          cabKnob.position.set(dx, 0.78, -th / 2 - 0.02);
+          g.add(cabKnob);
+        }
+        break;
+      }
+      case "hangingPots": {
+        // Ceiling-mounted pot rack with hanging pots and pans
+        const rackMat = std("#3A3A3A", 0.4, 0.3);
+        // Horizontal rack bar
+        const rackBar = new THREE.Mesh(
+          new THREE.BoxGeometry(tw * 0.8, 0.015, 0.015), rackMat
+        );
+        rackBar.position.y = 1.10;
+        g.add(rackBar);
+        // Cross bar
+        const crossBar = new THREE.Mesh(
+          new THREE.BoxGeometry(0.015, 0.015, th * 0.5), rackMat
+        );
+        crossBar.position.y = 1.10;
+        g.add(crossBar);
+        // Chains/rods from ceiling
+        for (const cx of [-tw * 0.3, tw * 0.3]) {
+          const chain = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.005, 0.005, 0.20, 4), rackMat
+          );
+          chain.position.set(cx, 1.20, 0);
+          g.add(chain);
+        }
+        // Hanging pots and pans
+        const potMat = std("#8A8A8A", 0.3, 0.4);
+        const copperMat = std("#B87333", 0.35, 0.3);
+        const hookGeo = new THREE.CylinderGeometry(0.003, 0.003, 0.06, 4);
+        // Pan 1 (copper, flat)
+        const pan1 = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.06, 0.015, 8), copperMat
+        );
+        pan1.position.set(-tw * 0.2, 1.02, -0.03);
+        g.add(pan1);
+        const pan1Handle = new THREE.Mesh(
+          new THREE.BoxGeometry(0.06, 0.008, 0.008), copperMat
+        );
+        pan1Handle.position.set(-tw * 0.2 + 0.06, 1.02, -0.03);
+        g.add(pan1Handle);
+        const hook1 = new THREE.Mesh(hookGeo, rackMat);
+        hook1.position.set(-tw * 0.2, 1.07, -0.03);
+        g.add(hook1);
+        // Pot 2 (steel, deep)
+        const pot2 = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.05, 0.04, 0.05, 8), potMat
+        );
+        pot2.position.set(0, 1.00, 0.02);
+        g.add(pot2);
+        const hook2 = new THREE.Mesh(hookGeo, rackMat);
+        hook2.position.set(0, 1.07, 0.02);
+        g.add(hook2);
+        // Pan 3 (dark, small)
+        const pan3 = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.045, 0.045, 0.012, 8), std("#444", 0.5, 0.2)
+        );
+        pan3.position.set(tw * 0.2, 1.04, -0.01);
+        g.add(pan3);
+        const pan3Handle = new THREE.Mesh(
+          new THREE.BoxGeometry(0.05, 0.006, 0.006), std("#444", 0.5, 0.2)
+        );
+        pan3Handle.position.set(tw * 0.2 - 0.05, 1.04, -0.01);
+        g.add(pan3Handle);
+        const hook3 = new THREE.Mesh(hookGeo, rackMat);
+        hook3.position.set(tw * 0.2, 1.07, -0.01);
+        g.add(hook3);
+        break;
+      }
       default: {
         // Generic fallback
         add(new THREE.BoxGeometry(tw, 0.45, th), new THREE.MeshToonMaterial({ color: f.col }), 0.23);
