@@ -21,9 +21,9 @@ export const RELAX_DATA: Record<number, RelaxDef> = {
     momQuote: "Aaah... finally.",
     sceneMode: "3d",
     items: [
-      { id: "wine", emoji: "\uD83C\uDF77", clickEmoji: "*sip*" },
-      { id: "cheese1", emoji: "\uD83E\uDDC0", clickEmoji: "*mmm*", consumable: true },
-      { id: "cheese2", emoji: "\uD83E\uDDC0", clickEmoji: "*mmm*", consumable: true },
+      { id: "wine", emoji: "\uD83C\uDF77", clickEmoji: "Momma needed her bottle" },
+      { id: "cheese1", emoji: "\uD83E\uDDC0", clickEmoji: "That's some Goud-a cheese!", consumable: true },
+      { id: "cheese2", emoji: "\uD83E\uDDC0", clickEmoji: "That's some Goud-a cheese!", consumable: true },
       { id: "crackers", emoji: "\uD83C\uDF6A", clickEmoji: "*crunch*", consumable: true },
     ],
   },
