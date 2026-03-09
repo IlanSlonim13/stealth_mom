@@ -4219,67 +4219,102 @@ export class Game {
       this.relaxTvLight = tvLight;
     }
 
-    // ── Enhance wine glass on side table — make it more prominent and clickable ──
+    // ── Wine glass + wine bottle on side table ──
     if (sideTableGroup) {
-      // Build a nicer wine glass on the side table
+      const glassMat = new THREE.MeshStandardMaterial({ color: "#E8F0F0", roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.7 });
+
+      // ── Wine glass (bigger, closer to couch side) ──
       const wineGroup = new THREE.Group();
 
-      // Stem
-      const stem = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.008, 0.008, 0.06, 6),
-        new THREE.MeshStandardMaterial({ color: "#E8F0F0", roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.7 })
-      );
-      stem.position.y = 0.03;
-      wineGroup.add(stem);
-
       // Base
-      const base = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.025, 0.025, 0.006, 8),
-        new THREE.MeshStandardMaterial({ color: "#E8F0F0", roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.7 })
-      );
-      base.position.y = 0;
-      wineGroup.add(base);
+      const wBase = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.008, 8), glassMat);
+      wBase.position.y = 0;
+      wineGroup.add(wBase);
+
+      // Stem
+      const wStem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.10, 6), glassMat);
+      wStem.position.y = 0.054;
+      wineGroup.add(wStem);
 
       // Bowl (open cylinder)
-      const bowl = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.035, 0.015, 0.06, 8, 1, true),
+      const wBowl = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.025, 0.10, 10, 1, true),
         new THREE.MeshStandardMaterial({ color: "#E0F0F0", roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.5 })
       );
-      bowl.position.y = 0.09;
-      wineGroup.add(bowl);
+      wBowl.position.y = 0.155;
+      wineGroup.add(wBowl);
 
       // Wine liquid
-      const wine = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.032, 0.013, 0.04, 8),
+      const wLiquid = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.022, 0.07, 10),
         new THREE.MeshStandardMaterial({ color: "#8B1A2A", emissive: "#3A0808", emissiveIntensity: 0.3, roughness: 0.5 })
       );
-      wine.position.y = 0.08;
-      wineGroup.add(wine);
+      wLiquid.position.y = 0.14;
+      wineGroup.add(wLiquid);
 
-      wineGroup.position.set(0.04, 0.34, -0.02);
+      // Position glass on couch-side of table, on top surface
+      wineGroup.position.set(-0.02, 0.34, -0.06);
       wineGroup.userData.relaxItem = "wine";
       sideTableGroup.add(wineGroup);
       this.relaxWineGlass = wineGroup;
       this.relaxClickables.push(wineGroup);
 
-      // Invisible hitbox so the wine glass is easy to click
+      // Invisible hitbox for easy clicking
       const wineHitbox = new THREE.Mesh(
-        new THREE.SphereGeometry(0.08, 8, 8),
+        new THREE.SphereGeometry(0.12, 8, 8),
         new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
       );
-      wineHitbox.position.y = 0.06;
+      wineHitbox.position.y = 0.10;
       wineGroup.add(wineHitbox);
 
-      // Add glow hint
+      // Glow hint on glass
       const wineGlow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.05, 8, 8),
+        new THREE.SphereGeometry(0.07, 8, 8),
         new THREE.MeshStandardMaterial({ color: "#FFD700", emissive: "#FFD700", emissiveIntensity: 0.6, transparent: true, opacity: 0.3 })
       );
       wineGlow.position.copy(wineGroup.position);
-      wineGlow.position.y += 0.06;
+      wineGlow.position.y += 0.10;
       wineGlow.userData.isGlow = true;
       sideTableGroup.add(wineGlow);
       this.glowMeshes.push(wineGlow);
+
+      // ── Wine bottle next to glass ──
+      const bottleGroup = new THREE.Group();
+      const bottleMat = new THREE.MeshStandardMaterial({ color: "#2A4A2A", roughness: 0.3, metalness: 0.1 });
+
+      // Body
+      const bBody = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.18, 8), bottleMat);
+      bBody.position.y = 0.09;
+      bottleGroup.add(bBody);
+
+      // Shoulder taper
+      const bShoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.035, 0.04, 8), bottleMat);
+      bShoulder.position.y = 0.20;
+      bottleGroup.add(bShoulder);
+
+      // Neck
+      const bNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.08, 6), bottleMat);
+      bNeck.position.y = 0.26;
+      bottleGroup.add(bNeck);
+
+      // Cork/cap
+      const bCork = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.014, 0.013, 0.02, 6),
+        new THREE.MeshStandardMaterial({ color: "#D4AF37", roughness: 0.4, metalness: 0.3 })
+      );
+      bCork.position.y = 0.31;
+      bottleGroup.add(bCork);
+
+      // Label on body
+      const bLabel = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.05, 0.06),
+        new THREE.MeshStandardMaterial({ color: "#F5F0E0", roughness: 0.8 })
+      );
+      bLabel.position.set(0, 0.10, 0.036);
+      bottleGroup.add(bLabel);
+
+      bottleGroup.position.set(0.06, 0.34, 0.02);
+      sideTableGroup.add(bottleGroup);
     }
 
     // ── Build cheese tray on coffee table ──
@@ -4382,13 +4417,13 @@ export class Game {
       });
       if (!cheeseMesh) return false;
       this.relaxAnim = { type: "cheese-reach", elapsed: 0, duration: 0.5, target: cheeseMesh };
-      this.relaxClickCallback?.("cheese", "*mmm*", clientX, clientY);
+      this.relaxClickCallback?.("cheese", "That's some Goud-a cheese!", clientX, clientY);
       return true;
     }
 
     if (itemId === "wine") {
       this.relaxAnim = { type: "wine-reach", elapsed: 0, duration: 0.5 };
-      this.relaxClickCallback?.("wine", "*sip*", clientX, clientY);
+      this.relaxClickCallback?.("wine", "Momma needed her bottle", clientX, clientY);
       return true;
     }
 
