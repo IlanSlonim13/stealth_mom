@@ -4565,6 +4565,9 @@ export class Game {
       v.copy(this.mom.position);
       v.y += this.momHeadBaseY + 0.13;
     }
+    // Nudge 2 tiles left and 2 tiles up (isometric: -X, -Z in world space)
+    v.x -= 0.5; // 2 × TILE_SIZE
+    v.z -= 0.5;
     v.project(this.camera);
     const w = this.renderer.domElement.clientWidth;
     const h = this.renderer.domElement.clientHeight;
