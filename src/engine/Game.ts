@@ -1996,39 +1996,39 @@ export class Game {
         break;
       }
       case "kitchenIsland": {
-        // Kitchen island: wider counter with sink
+        // Kitchen island: wider counter with sink on south edge
         add(new THREE.BoxGeometry(tw, 0.38, th), std("#7A6A5A", 0.7), 0.19); // base
         add(new THREE.BoxGeometry(tw + 0.06, 0.05, th + 0.06), std("#E8DDD0", 0.35), 0.41); // countertop
-        // Sink basin (recessed rectangle)
+        // Sink basin — south edge of island
         const sinkRim = new THREE.Mesh(
           new THREE.BoxGeometry(0.22, 0.02, 0.16),
           std("#C0C0C8", 0.25, 0.3)
         );
-        sinkRim.position.set(0.08, 0.43, 0);
+        sinkRim.position.set(0, 0.43, th / 2 - 0.12);
         g.add(sinkRim);
         const sinkBasin = new THREE.Mesh(
           new THREE.BoxGeometry(0.18, 0.04, 0.12),
           std("#A0A0AA", 0.3, 0.2)
         );
-        sinkBasin.position.set(0.08, 0.40, 0);
+        sinkBasin.position.set(0, 0.40, th / 2 - 0.12);
         g.add(sinkBasin);
-        // Faucet
+        // Faucet — behind sink on south edge
         const faucetBase = new THREE.Mesh(
           new THREE.CylinderGeometry(0.012, 0.012, 0.08, 6),
           std("#C0C0C8", 0.2, 0.5)
         );
-        faucetBase.position.set(0.08, 0.48, -0.09);
+        faucetBase.position.set(0, 0.48, th / 2 - 0.02);
         g.add(faucetBase);
         const faucetArm = new THREE.Mesh(
           new THREE.CylinderGeometry(0.008, 0.008, 0.06, 6),
           std("#C0C0C8", 0.2, 0.5)
         );
         faucetArm.rotation.x = Math.PI / 2;
-        faucetArm.position.set(0.08, 0.52, -0.06);
+        faucetArm.position.set(0, 0.52, th / 2 - 0.05);
         g.add(faucetArm);
-        // Cutting board on the other side
+        // Cutting board — north side
         const board = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.12), std("#C8A870", 0.8));
-        board.position.set(-0.12, 0.44, 0); board.rotation.y = 0.2;
+        board.position.set(-0.12, 0.44, -th / 2 + 0.12); board.rotation.y = 0.2;
         g.add(board);
         break;
       }
