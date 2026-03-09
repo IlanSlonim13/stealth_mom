@@ -66,6 +66,8 @@ export const LEVELS: LevelData[] = [
       { x:15, z:8,  w:2, h:2, label:"chairB2",  col:"#6B4226", shape:"diningChair", rot:Math.PI    },  // south-right
       // Credenza — against north wall
       { x:20, z:2,  w:6, h:2, label:"credenza",       col:"#5C3A1E", shape:"credenza"            },
+      // China credenza with display plates — NW wall of dining room
+      { x:2,  z:2,  w:6, h:2, label:"chinaCredenza",  col:"#5C3A1E", shape:"chinaCredenza"       },
       // Door at z=14 wall — west doorway (x=4..5)
       { x:4,  z:14, w:2, h:1, label:"diningDoorW",    col:"#8B6F5C", shape:"door"                },
 
@@ -96,10 +98,24 @@ export const LEVELS: LevelData[] = [
       { x:36, z:31, w:2, h:3, label:"fridge",          col:"#D0D8E0", shape:"fridge"               },
       // Counter — along south wall
       { x:29, z:32, w:7, h:2, label:"counter",         col:"#C8B89A", shape:"counter"              },
-      // Stove/Oven — against east wall
-      { x:36, z:26, w:2, h:4, label:"stove",           col:"#444444", shape:"oven"                 },
+      // Gas stove — against east wall
+      { x:36, z:26, w:2, h:4, label:"stove",           col:"#444444", shape:"gasStove"             },
       // Kitchen island with sink — center of room
       { x:31, z:10, w:6, h:4, label:"island",          col:"#8B6F5C", shape:"kitchenIsland"        },
+      // Bar chairs around island
+      { x:30, z:11, w:1, h:2, label:"barChairL",       col:"#555555", shape:"barChair", rot:-Math.PI/2 },
+      { x:37, z:11, w:1, h:2, label:"barChairR",       col:"#555555", shape:"barChair", rot:Math.PI/2  },
+      { x:33, z:9,  w:2, h:1, label:"barChairT",       col:"#555555", shape:"barChair"                 },
+      { x:33, z:14, w:2, h:1, label:"barChairB",       col:"#555555", shape:"barChair", rot:Math.PI     },
+      // Wall cabinets — along north wall
+      { x:29, z:2,  w:8, h:1, label:"cabinetN",        col:"#E8DDD0", shape:"wallCabinet"          },
+      // Wall cabinets — along east wall
+      { x:37, z:4,  w:1, h:6, label:"cabinetE1",       col:"#E8DDD0", shape:"wallCabinet"          },
+      { x:37, z:18, w:1, h:6, label:"cabinetE2",       col:"#E8DDD0", shape:"wallCabinet"          },
+      // Wall cabinets — along south wall (above counter)
+      { x:29, z:33, w:7, h:1, label:"cabinetS",        col:"#E8DDD0", shape:"wallCabinet"          },
+      // Hanging pots and pans — above the island
+      { x:32, z:11, w:4, h:2, label:"hangingPots",     col:"#3A3A3A", shape:"hangingPots"          },
     ],
     // Windows integrated into walls
     windowWalls: [
