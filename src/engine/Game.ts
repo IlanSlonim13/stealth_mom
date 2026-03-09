@@ -4553,23 +4553,25 @@ export class Game {
     return g;
   }
 
-  /** Project Mom's head position into screen (CSS pixel) coordinates */
+  /** Project Mom's head-top into screen (CSS pixel) coordinates.
+   *  The speech bubble CSS triangle extends 10px below the bubble bottom,
+   *  so we subtract 10px so the triangle tip touches the head top. */
   getMomScreenPos(): { x: number; y: number } {
-    // Use the head mesh's actual world position for correct isometric alignment
     const v = new THREE.Vector3();
     if (this.momHead) {
       this.momHead.getWorldPosition(v);
-      v.y += 0.15; // offset above head-top (head radius 0.13 + small gap)
+      v.y += 0.13; // head sphere radius → top of head
     } else {
       v.copy(this.mom.position);
-      v.y += this.momHeadBaseY + 0.15;
+      v.y += this.momHeadBaseY + 0.13;
     }
     v.project(this.camera);
     const w = this.renderer.domElement.clientWidth;
     const h = this.renderer.domElement.clientHeight;
     const screenX = (v.x * 0.5 + 0.5) * w;
     const screenY = (-v.y * 0.5 + 0.5) * h;
-    return { x: screenX, y: screenY };
+    // subtract 10px to compensate for the CSS triangle pointer height
+    return { x: screenX, y: screenY - 10 };
   }
 
   destroy() {
