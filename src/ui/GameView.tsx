@@ -300,16 +300,23 @@ export function GameView() {
             </div>
           ) : ( */}
           {(
-            /* Speech bubble — positioned above Mom's head */
+            /* Speech bubble — pointer at top-left, bubble extends right & down */
             momScreenPos && (
               <div style={{
                 position: "absolute",
                 left: momScreenPos.x,
                 top: momScreenPos.y,
-                transform: "translate(-50%, -100%)",
-                display: "flex", flexDirection: "column", alignItems: "center",
+                display: "flex", flexDirection: "column", alignItems: "flex-start",
                 animation: "bubbleIn 0.4s ease-out 0.3s both",
               }}>
+                {/* Triangle pointer at top-left, pointing down */}
+                <div style={{
+                  marginLeft: 10,
+                  width: 0, height: 0,
+                  borderLeft: "10px solid transparent",
+                  borderRight: "10px solid transparent",
+                  borderBottom: "10px solid rgba(255,255,255,0.95)",
+                }} />
                 <div style={{
                   position: "relative",
                   background: "rgba(255,255,255,0.95)",
@@ -324,14 +331,6 @@ export function GameView() {
                   }}>
                     {quote}
                   </p>
-                  {/* Triangle pointer */}
-                  <div style={{
-                    position: "absolute", bottom: -10, left: "50%", marginLeft: -10,
-                    width: 0, height: 0,
-                    borderLeft: "10px solid transparent",
-                    borderRight: "10px solid transparent",
-                    borderTop: "10px solid rgba(255,255,255,0.95)",
-                  }} />
                 </div>
               </div>
             )
