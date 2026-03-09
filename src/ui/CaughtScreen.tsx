@@ -14,15 +14,20 @@ export function CaughtScreen() {
       display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center",
       fontFamily: "Georgia, serif", color: "#FFF",
+      animation: "caughtFadeIn 0.5s ease-out both",
     }}>
       <style>{`
+        @keyframes caughtFadeIn {
+          0%   { opacity: 0; }
+          100% { opacity: 1; }
+        }
         @keyframes shake {
           0%,100% { transform:translateX(0);  }
           25%      { transform:translateX(-8px); }
           75%      { transform:translateX(8px);  }
         }
       `}</style>
-      <div style={{ animation: "shake 0.4s ease-out", textAlign: "center", padding: "0 32px" }}>
+      <div style={{ animation: "shake 0.4s ease-out 0.3s both", textAlign: "center", padding: "0 32px" }}>
         <div style={{ fontSize: 56, marginBottom: 16 }}>😱</div>
         <h2 style={{ fontSize: 22, fontWeight: 400, margin: "0 0 12px", color: "#FF6B6B" }}>
           BUSTED!
