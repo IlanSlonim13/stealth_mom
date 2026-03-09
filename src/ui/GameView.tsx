@@ -214,8 +214,8 @@ export function GameView() {
         }}>
           <style>{`
             @keyframes bubbleIn {
-              from { opacity:0; transform:translateY(10px) scale(0.9); }
-              to   { opacity:1; transform:translateY(0) scale(1); }
+              from { opacity:0; transform:scale(0.9); }
+              to   { opacity:1; transform:scale(1); }
             }
             @keyframes tutorialFadeIn {
               0%   { opacity:0; transform:translateY(12px) scale(0.95); }
@@ -307,6 +307,7 @@ export function GameView() {
                 left: momScreenPos.x,
                 top: momScreenPos.y,
                 transform: "translateY(-100%)",
+                transformOrigin: "bottom left",
                 display: "flex", flexDirection: "column", alignItems: "flex-start",
                 animation: "bubbleIn 0.4s ease-out 0.3s both",
               }}>
