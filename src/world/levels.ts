@@ -132,7 +132,7 @@ export const LEVELS: LevelData[] = [
     ],
     rug: { x:4, z:22, w:10, h:10 },
     playerStart: { x:33, z:20 },
-    goal: { x:10, z:24, label:"The Couch" },
+    goal: { x:12, z:24, label:"The Couch" },
     npcs: [
       { type:"dog", x:22, z:24, radius: DOG_SOUND_RADIUS },
     ],
