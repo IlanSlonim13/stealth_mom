@@ -3343,22 +3343,60 @@ export class Game {
 
   private makeBoneSprite(): THREE.Sprite {
     const canvas = document.createElement("canvas");
-    canvas.width = 64; canvas.height = 64;
+    canvas.width = 128; canvas.height = 128;
     const ctx = canvas.getContext("2d")!;
-    ctx.clearRect(0, 0, 64, 64);
-    // Draw a bone shape: two circles connected by a rectangle
-    ctx.fillStyle = "#D2B48C";
-    ctx.strokeStyle = "#222222";
-    ctx.lineWidth = 3;
-    // Shaft
-    ctx.fillRect(20, 26, 24, 12);
-    ctx.strokeRect(20, 26, 24, 12);
-    // Left knobs
-    ctx.beginPath(); ctx.arc(20, 26, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.arc(20, 38, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    // Right knobs
-    ctx.beginPath(); ctx.arc(44, 26, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.arc(44, 38, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.clearRect(0, 0, 128, 128);
+
+    // Classic cartoon bone — compositing approach: black outline layer, then white fill on top
+    const cx = 64, cy = 64;
+    const shaftW = 56, shaftH = 20;
+    const knobR = 14;
+    const outlineW = 5;
+
+    const knobs = [
+      { x: cx - shaftW / 2, y: cy - shaftH / 2 },  // top-left
+      { x: cx - shaftW / 2, y: cy + shaftH / 2 },  // bottom-left
+      { x: cx + shaftW / 2, y: cy - shaftH / 2 },  // top-right
+      { x: cx + shaftW / 2, y: cy + shaftH / 2 },  // bottom-right
+    ];
+
+    // Layer 1: black outline (draw all shapes inflated by outline width)
+    ctx.fillStyle = "#222222";
+    ctx.fillRect(cx - shaftW / 2 - outlineW, cy - shaftH / 2 - outlineW, shaftW + outlineW * 2, shaftH + outlineW * 2);
+    for (const k of knobs) {
+      ctx.beginPath(); ctx.arc(k.x, k.y, knobR + outlineW, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Layer 2: white fill (normal size)
+    ctx.fillStyle = "#F0EDE8";
+    ctx.fillRect(cx - shaftW / 2, cy - shaftH / 2, shaftW, shaftH);
+    for (const k of knobs) {
+      ctx.beginPath(); ctx.arc(k.x, k.y, knobR, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Layer 3: grey highlight near top edges of knobs for subtle 3D look
+    ctx.fillStyle = "#D8D4D0";
+    for (const k of knobs) {
+      ctx.beginPath(); ctx.arc(k.x - 2, k.y - 2, knobR * 0.6, 0, Math.PI * 2); ctx.fill();
+    }
+    // Re-cover center with main fill so highlight is only at edges
+    ctx.fillStyle = "#F0EDE8";
+    ctx.fillRect(cx - shaftW / 2 + 2, cy - shaftH / 2 + 2, shaftW - 4, shaftH - 4);
+    for (const k of knobs) {
+      ctx.beginPath(); ctx.arc(k.x, k.y, knobR * 0.75, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Layer 4: grey speckle dots
+    ctx.fillStyle = "#C0B8B0";
+    const speckles = [
+      [45, 58, 2], [75, 62, 2.5], [55, 70, 2], [82, 66, 2],
+      [42, 68, 1.8], [78, 56, 2], [60, 74, 1.5], [86, 60, 2],
+      [50, 55, 1.5], [70, 72, 2], [38, 60, 1.5], [90, 68, 1.5],
+    ];
+    for (const [sx, sy, sr] of speckles) {
+      ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+    }
+
     const tex = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
     sprite.scale.set(0.3, 0.3, 1);
@@ -4515,17 +4553,18 @@ export class Game {
     return g;
   }
 
-  /** Project Mom's position into screen (CSS pixel) coordinates, offset upward in screen-space */
+  /** Project Mom's head-top position into screen (CSS pixel) coordinates */
   getMomScreenPos(): { x: number; y: number } {
-    // Project mom's base position (avoids isometric horizontal shift from world-space Y offset)
-    const v = new THREE.Vector3(this.mom.position.x, this.mom.position.y, this.mom.position.z);
+    // Project from head-top world position so bubble aligns with head in isometric view
+    const headTopY = this.momHeadBaseY + 0.13; // head center + head sphere radius
+    const v = new THREE.Vector3(this.mom.position.x, this.mom.position.y + headTopY, this.mom.position.z);
     v.project(this.camera);
     const w = this.renderer.domElement.clientWidth;
     const h = this.renderer.domElement.clientHeight;
     const screenX = (v.x * 0.5 + 0.5) * w;
     const screenY = (-v.y * 0.5 + 0.5) * h;
-    // Offset upward in screen-space to position above her head
-    return { x: screenX, y: screenY - 80 };
+    // Small screen-space gap above head
+    return { x: screenX, y: screenY - 22 };
   }
 
   destroy() {
