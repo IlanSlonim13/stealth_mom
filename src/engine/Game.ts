@@ -4565,6 +4565,7 @@ export class Game {
       v.copy(this.mom.position);
       v.y += this.momHeadBaseY + 0.13;
     }
+    v.y += 0.375; // nudge up 1.5 tiles in screen view
     v.project(this.camera);
     const w = this.renderer.domElement.clientWidth;
     const h = this.renderer.domElement.clientHeight;
