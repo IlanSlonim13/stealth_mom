@@ -121,6 +121,7 @@ export class Game {
 
   private caught = false;
   private won = false;
+  private dogCaughtAnim: { npc: NpcState; elapsed: number; barked: boolean; line: string } | null = null;
   private introPhase = true;
   private introElapsed = 0;
   private introPaused = false;
@@ -3501,6 +3502,7 @@ export class Game {
     this.updateOutdoor(dt);
 
     if (this.caught) {
+      if (this.dogCaughtAnim) this.updateDogCaughtAnim(dt);
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -4239,14 +4241,66 @@ export class Game {
     }
   }
 
+  private updateDogCaughtAnim(dt: number) {
+    const anim = this.dogCaughtAnim;
+    if (!anim) return;
+    anim.elapsed += dt;
+    const { npc, elapsed } = anim;
+    const group = npc.group;
+
+    // Phase 1 (0 – 0.4s): Dog jolts awake — body lifts up from sleeping pose
+    if (elapsed < 0.4) {
+      const t = elapsed / 0.4;
+      const eased = easeOutQuad(t);
+      // Raise dog body (sleeping at TILE_H, standing ~0.08 higher)
+      group.position.y = TILE_H + eased * 0.08;
+      // Slight head-lift rotation (whole group tips forward)
+      group.rotation.x = lerp(0, -0.15, eased);
+    }
+
+    // Phase 2 (0.4s): Play bark audio
+    if (elapsed >= 0.4 && !anim.barked) {
+      anim.barked = true;
+      AudioManager.play("bark");
+      AudioManager.play("caught-dog");
+    }
+
+    // Phase 2 (0.4 – 1.2s): Bark shake — dog shakes/bounces
+    if (elapsed >= 0.4 && elapsed < 1.2) {
+      const bt = (elapsed - 0.4) / 0.8;
+      // Rapid vertical bounce to simulate barking
+      const bounce = Math.sin(bt * Math.PI * 6) * 0.03 * (1 - bt);
+      group.position.y = TILE_H + 0.08 + bounce;
+      // Slight head bob
+      group.rotation.x = -0.15 + Math.sin(bt * Math.PI * 6) * 0.08 * (1 - bt);
+    }
+
+    // Phase 3 (1.2s+): Trigger caught screen
+    if (elapsed >= 1.2) {
+      this.dogCaughtAnim = null;
+      this.callbacks.onCaught(anim.line);
+    }
+  }
+
   private triggerCaught(npcType: NpcState["type"] = "toddler") {
     if (this.caught) return;
     this.caught = true;
-    const soundKey = npcType === "dog" ? "caught-dog"
-      : npcType === "husband" ? "caught-husband"
-      : "caught-mommy";
-    AudioManager.play(soundKey);
     const line = pickRandom(this.level.caughtLines);
+
+    if (npcType === "dog") {
+      // Dog wake-up bark sequence before showing caught screen
+      const dogNpc = this.npcs.find(n => n.type === "dog");
+      if (dogNpc) {
+        // Hide Z's and thought bubble immediately
+        if (dogNpc.zGroup) dogNpc.zGroup.visible = false;
+        if (dogNpc.thoughtBubble) dogNpc.thoughtBubble.visible = false;
+        this.dogCaughtAnim = { npc: dogNpc, elapsed: 0, barked: false, line };
+        return; // updateDogCaughtAnim will handle the rest
+      }
+    }
+
+    const soundKey = npcType === "husband" ? "caught-husband" : "caught-mommy";
+    AudioManager.play(soundKey);
     setTimeout(() => this.callbacks.onCaught(line), CAUGHT_DELAY_MS);
   }
 
