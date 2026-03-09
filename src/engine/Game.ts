@@ -4570,8 +4570,7 @@ export class Game {
     const h = this.renderer.domElement.clientHeight;
     const screenX = (v.x * 0.5 + 0.5) * w;
     const screenY = (-v.y * 0.5 + 0.5) * h;
-    // subtract 10px to compensate for the CSS triangle pointer height
-    return { x: screenX, y: screenY - 10 };
+    return { x: screenX, y: screenY };
   }
 
   destroy() {
