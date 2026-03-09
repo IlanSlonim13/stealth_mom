@@ -4553,15 +4553,18 @@ export class Game {
     return g;
   }
 
-  /** Project the north-east corner of the room into screen coordinates.
-   *  The speech bubble bottom (triangle tip) touches this fixed world point,
-   *  so it stays anchored during zoom. */
+  /** Project Mom's head-top into screen (CSS pixel) coordinates.
+   *  The speech bubble sits above Mom with the triangle tip pointing down
+   *  at her head, like a classic comic speech bubble. */
   getMomScreenPos(): { x: number; y: number } {
-    const TS = 0.25; // TILE_SIZE
-    // North-east corner: max X, min Z at floor level
-    const neX = (this.level.grid.w - this.cx) * TS;
-    const neZ = -this.cz * TS;
-    const v = new THREE.Vector3(neX, 0, neZ);
+    const v = new THREE.Vector3();
+    if (this.momHead) {
+      this.momHead.getWorldPosition(v);
+      v.y += 0.13; // head sphere radius → top of head
+    } else {
+      v.copy(this.mom.position);
+      v.y += this.momHeadBaseY + 0.13;
+    }
     v.project(this.camera);
     const w = this.renderer.domElement.clientWidth;
     const h = this.renderer.domElement.clientHeight;
