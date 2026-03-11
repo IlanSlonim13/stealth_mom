@@ -284,7 +284,7 @@ export class Game {
 
     AudioManager.preload([
       "footstep-soft", "squeak", "caught-mommy", "caught-dog",
-      "caught-husband", "success", "decoy-throw", "ambient-hum",
+      "caught-husband", "success", "decoy-throw", "ambient-hum", "bark",
     ]);
     AudioManager.startAmbient();
 
@@ -4173,21 +4173,21 @@ export class Game {
           // Phase 1: bring to mouth (first 50%)
           if (t < 0.5) {
             const subT = easeOutQuad(t / 0.5);
-            this.momLeftArm.rotation.x = lerp(-0.4, -1.2, subT);
-            this.momLeftArm.rotation.z = lerp(0.8, 0.1, subT);
+            this.momLeftArm.rotation.x = lerp(-0.4, -2.0, subT);
+            this.momLeftArm.rotation.z = lerp(0.8, 0.25, subT);
           }
           // Phase 2: tip glass and drink (50-100%)
           else {
             const subT = (t - 0.5) / 0.5;
-            this.momLeftArm.rotation.x = lerp(-1.2, -1.0, subT);
-            this.momLeftArm.rotation.z = lerp(0.1, 0.15, Math.sin(subT * Math.PI) * 0.5 + 0.5);
+            this.momLeftArm.rotation.x = lerp(-2.0, -1.8, subT);
+            this.momLeftArm.rotation.z = lerp(0.25, 0.3, Math.sin(subT * Math.PI) * 0.5 + 0.5);
           }
         }
         // Tilt wine glass to pour into mouth
         if (this.relaxWineGlass) {
           if (t > 0.4 && t < 0.85) {
             const pourT = (t - 0.4) / 0.45;
-            this.relaxWineGlass.rotation.z = lerp(0, 0.6, Math.sin(pourT * Math.PI));
+            this.relaxWineGlass.rotation.z = lerp(0, 0.7, Math.sin(pourT * Math.PI));
           } else {
             this.relaxWineGlass.rotation.z = 0;
           }
@@ -4195,9 +4195,10 @@ export class Game {
         // Head tilts back for drinking
         if (this.momHead) {
           if (t > 0.3 && t < 0.8) {
-            this.momHead.rotation.x = lerp(-0.1, -0.25, (t - 0.3) / 0.5);
+            const subH = (t - 0.3) / 0.5;
+            this.momHead.rotation.x = lerp(0.15, -0.15, subH);
           } else if (t >= 0.8) {
-            this.momHead.rotation.x = lerp(-0.25, -0.1, (t - 0.8) / 0.2);
+            this.momHead.rotation.x = lerp(-0.15, 0.15, (t - 0.8) / 0.2);
           }
         }
         if (t >= 1) {
@@ -4208,10 +4209,10 @@ export class Game {
       case "wine-return": {
         // Return arm to resting position (x=0.4, z=0.6 from phase 6)
         if (this.momLeftArm) {
-          this.momLeftArm.rotation.x = lerp(-1.0, 0.4, eased);
-          this.momLeftArm.rotation.z = lerp(0.15, 0.6, eased);
+          this.momLeftArm.rotation.x = lerp(-1.8, 0.4, eased);
+          this.momLeftArm.rotation.z = lerp(0.3, 0.6, eased);
         }
-        if (this.momHead) this.momHead.rotation.x = lerp(-0.1, -0.1, eased);
+        if (this.momHead) this.momHead.rotation.x = lerp(0.15, 0.15, eased);
         if (t >= 1) {
           // Return wine glass to side table
           if (this.relaxWineGlass && this.relaxWineGlassOrigParent) {
