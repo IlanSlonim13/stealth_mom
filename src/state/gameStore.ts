@@ -17,6 +17,7 @@ interface GameState {
   relaxActive: boolean;      // true when post-level relaxation overlay is showing
 
   startLevel: (idx: number) => void;
+  startLevelEnd: (idx: number) => void;
   setScreen: (screen: Screen) => void;
   setCaughtLine: (line: string) => void;
   setWinText: (text: string) => void;
@@ -49,6 +50,21 @@ export const useGameStore = create<GameState>((set) => ({
       relaxActive: false,
       decoyMode: false,
       decoysLeft: LEVELS[idx].decoys ?? 0,
+      inventory: [],
+      nearPickup: null,
+      caughtLine: "",
+      winText: "",
+    });
+  },
+
+  startLevelEnd: (idx) => {
+    set({
+      levelIdx: idx,
+      screen: "game",
+      introActive: false,
+      relaxActive: true,
+      decoyMode: false,
+      decoysLeft: 0,
       inventory: [],
       nearPickup: null,
       caughtLine: "",

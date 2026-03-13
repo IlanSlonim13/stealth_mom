@@ -9,6 +9,7 @@ const NPC_ICONS: Record<string, string> = {
 
 export function MainMenu() {
   const startLevel = useGameStore((s) => s.startLevel);
+  const startLevelEnd = useGameStore((s) => s.startLevelEnd);
 
   return (
     <div style={{
@@ -33,31 +34,50 @@ export function MainMenu() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {LEVELS.map((lv, i) => (
-            <button
-              key={i}
-              className="level-btn"
-              onClick={() => startLevel(i)}
-              style={{
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: 8, padding: "12px 24px",
-                color: "#FFF", cursor: "pointer",
-                fontSize: 13, letterSpacing: 1,
-                transition: "all 0.3s",
-                display: "flex", alignItems: "center", gap: 10,
-                fontFamily: "Georgia, serif", width: "100%",
-              }}
-            >
-              <span style={{ opacity: 0.3, fontWeight: 300, fontFamily: "monospace", minWidth: 20 }}>
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <span>{lv.name}</span>
-              <span style={{ marginLeft: "auto", opacity: 0.4, fontSize: 11 }}>
-                {lv.npcs.map((n) => NPC_ICONS[n.type] ?? "").join("")}
-                {lv.traps.length > 0 ? "💣" : ""}
-                {lv.decoys > 0 ? "🔑" : ""}
-              </span>
-            </button>
+            <div key={i} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
+              <button
+                className="level-btn"
+                onClick={() => startLevel(i)}
+                style={{
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 8, padding: "12px 24px",
+                  color: "#FFF", cursor: "pointer",
+                  fontSize: 13, letterSpacing: 1,
+                  transition: "all 0.3s",
+                  display: "flex", alignItems: "center", gap: 10,
+                  fontFamily: "Georgia, serif", flex: 1,
+                }}
+              >
+                <span style={{ opacity: 0.3, fontWeight: 300, fontFamily: "monospace", minWidth: 20 }}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span>{lv.name}</span>
+                <span style={{ marginLeft: "auto", opacity: 0.4, fontSize: 11 }}>
+                  {lv.npcs.map((n) => NPC_ICONS[n.type] ?? "").join("")}
+                  {lv.traps.length > 0 ? "💣" : ""}
+                  {lv.decoys > 0 ? "🔑" : ""}
+                </span>
+              </button>
+              <button
+                onClick={() => startLevelEnd(i)}
+                title="Jump to level end scene"
+                style={{
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 8, padding: "0 10px",
+                  color: "rgba(255,255,255,0.35)", cursor: "pointer",
+                  fontSize: 10, letterSpacing: 1,
+                  fontFamily: "Georgia, serif",
+                  transition: "all 0.2s",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.7)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.03)"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.35)"; }}
+              >
+                END
+              </button>
+            </div>
           ))}
         </div>
 

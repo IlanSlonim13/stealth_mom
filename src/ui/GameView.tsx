@@ -70,6 +70,7 @@ export function GameView() {
         return;
       }
       const level = LEVELS[levelIdx];
+      const skipToRelax = useGameStore.getState().relaxActive;
       const game = new Game(el, level, {
         onCaught: (line) => { setCaughtLine(line); setScreen("caught"); },
         onWon: (text)   => { setWinText(text); },
@@ -95,6 +96,15 @@ export function GameView() {
           game.enterRelaxScene();
         }
       });
+      // Dev shortcut: jump straight to level-end relax scene
+      if (skipToRelax) {
+        AudioManager.preload(["mom-sigh"]);
+        setTimeout(() => AudioManager.play("mom-sigh"), 2800);
+        const rd = RELAX_DATA[level.id];
+        if (rd?.sceneMode === "3d") {
+          game.enterRelaxScene();
+        }
+      }
       game.setRelaxClickCallback((itemId, feedback, screenX, screenY) => {
         feedbackKey.current++;
         const fb: ClickFeedback = { text: feedback, x: screenX, y: screenY - 30, key: feedbackKey.current };
