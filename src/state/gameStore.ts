@@ -15,6 +15,7 @@ interface GameState {
   nearPickup: string | null; // item name Mom is near (for HUD prompt)
   introActive: boolean;      // true while intro zoom is playing
   relaxActive: boolean;      // true when post-level relaxation overlay is showing
+  skipToEnd: boolean;        // true when "End" dev button was used — triggers jumpToWinSequence
 
   startLevel: (idx: number) => void;
   startLevelEnd: (idx: number) => void;
@@ -28,6 +29,7 @@ interface GameState {
   throwDecoy: () => void;
   setIntroActive: (v: boolean) => void;
   setRelaxActive: (v: boolean) => void;
+  setSkipToEnd: (v: boolean) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -41,6 +43,7 @@ export const useGameStore = create<GameState>((set) => ({
   nearPickup: null,
   introActive: false,
   relaxActive: false,
+  skipToEnd: false,
 
   startLevel: (idx) => {
     set({
@@ -48,6 +51,7 @@ export const useGameStore = create<GameState>((set) => ({
       screen: "game",
       introActive: true,
       relaxActive: false,
+      skipToEnd: false,
       decoyMode: false,
       decoysLeft: LEVELS[idx].decoys ?? 0,
       inventory: [],
@@ -62,7 +66,8 @@ export const useGameStore = create<GameState>((set) => ({
       levelIdx: idx,
       screen: "game",
       introActive: false,
-      relaxActive: true,
+      relaxActive: false,
+      skipToEnd: true,
       decoyMode: false,
       decoysLeft: 0,
       inventory: [],
@@ -91,4 +96,5 @@ export const useGameStore = create<GameState>((set) => ({
 
   setIntroActive: (v) => set({ introActive: v }),
   setRelaxActive: (v) => set({ relaxActive: v }),
+  setSkipToEnd: (v) => set({ skipToEnd: v }),
 }));

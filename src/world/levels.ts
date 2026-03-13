@@ -77,7 +77,7 @@ export const LEVELS: LevelData[] = [
       // Couch (rotated 180° — back faces north, sitter faces south toward TV)
       { x:4,  z:22, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch", rot:Math.PI  },
       // Side table with wine glass — next to couch
-      { x:13, z:22, w:2, h:2, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
+      { x:12, z:22, w:2, h:2, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
       // Coffee table between TV and couch
       { x:6,  z:26, w:4, h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"         },
       // Ottoman to the right of coffee table area

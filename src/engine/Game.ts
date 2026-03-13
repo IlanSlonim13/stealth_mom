@@ -156,7 +156,7 @@ export class Game {
 
   // Animated outdoor objects
   private outdoorCars: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number }[] = [];
-  private outdoorPeople: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D }[] = [];
+  private outdoorPeople: { group: THREE.Group; minX: number; maxX: number; speed: number; dir: number; leftLeg: THREE.Object3D; rightLeg: THREE.Object3D; leftArm: THREE.Object3D; rightArm: THREE.Object3D }[] = [];
 
   // ── Relax scene (Level 1 3D interactive) ───────────────────────────────────
   private relaxSceneActive = false;
@@ -946,14 +946,28 @@ export class Game {
         personGroup.add(legMesh);
         legs.push(legMesh);
       }
+      // Arms — simple cylinders pivoting at shoulder (y=0.475)
+      const armMeshL = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.018, 0.16, 5),
+        stdMat(col),
+      );
+      armMeshL.position.set(-0.10, 0.395, 0);
+      personGroup.add(armMeshL);
+      const armMeshR = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.018, 0.16, 5),
+        stdMat(col),
+      );
+      armMeshR.position.set(0.10, 0.395, 0);
+      personGroup.add(armMeshR);
       personGroup.position.set(px, 0, pz);
-      if (speed < 0) personGroup.rotation.y = Math.PI;
+      personGroup.rotation.y = speed > 0 ? -Math.PI / 2 : Math.PI / 2;
       personGroup.castShadow = true;
       this.scene.add(personGroup);
       this.outdoorPeople.push({
         group: personGroup, minX: walkMinX, maxX: walkMaxX,
         speed, dir: speed > 0 ? 1 : -1,
         leftLeg: legs[0], rightLeg: legs[1],
+        leftArm: armMeshL, rightArm: armMeshR,
       });
     });
 
@@ -1620,55 +1634,52 @@ export class Game {
         // Base/frame (hidden under cushions, slightly visible at edges)
         add(new THREE.BoxGeometry(tw, 0.10, th), fabDark, 0.20);
 
-        // ── Seat cushions — puffy rounded boxes per seat ──
-        const numCush = f.w;
-        const armW = 0.12;
+        // ── Seat cushions — 3 square cushions with outline ──
+        const numCush = 3;
+        const armW = 0.20;
         const innerW = tw - armW * 2;
-        const gap = 0.015;
+        const gap = 0.018;
         const cushW = (innerW - gap * (numCush - 1)) / numCush;
-        const cushH = 0.10;
-        const cushD = th * 0.65;
+        const cushH = 0.14;
+        const cushD = th * 0.90;
+        const border = 0.008;
         for (let i = 0; i < numCush; i++) {
           const cx = -innerW / 2 + cushW / 2 + i * (cushW + gap);
-          // Main cushion body (slightly rounded via box)
-          const cush = new THREE.Mesh(
-            new THREE.BoxGeometry(cushW - 0.01, cushH, cushD),
-            fabLight
+          // Dark outline box (slightly larger)
+          const cushBorder = new THREE.Mesh(
+            new THREE.BoxGeometry(cushW + border, cushH + border, cushD + border),
+            fabDark
           );
-          cush.position.set(cx, 0.30, -th * 0.08);
+          cushBorder.position.set(cx, 0.27, -th * 0.08);
+          g.add(cushBorder);
+          // Main cushion (couch color)
+          const cush = new THREE.Mesh(
+            new THREE.BoxGeometry(cushW, cushH, cushD),
+            fab
+          );
+          cush.position.set(cx, 0.27, -th * 0.08);
           cush.castShadow = true; cush.receiveShadow = true;
           g.add(cush);
-          // Puffy top (cylinder for rounded look)
-          const puff = new THREE.Mesh(
-            new THREE.CylinderGeometry(cushW * 0.45, cushW * 0.48, cushD, 8, 1, false, 0, Math.PI),
-            fab
-          );
-          puff.rotation.x = Math.PI / 2;
-          puff.rotation.z = Math.PI / 2;
-          puff.position.set(cx, 0.35, -th * 0.08);
-          puff.castShadow = true;
-          g.add(puff);
         }
 
-        // ── Back cushions — taller, softer, one per seat ──
+        // ── Back cushions — 3 square cushions with outline ──
         for (let i = 0; i < numCush; i++) {
           const cx = -innerW / 2 + cushW / 2 + i * (cushW + gap);
+          // Dark outline
+          const backBorder = new THREE.Mesh(
+            new THREE.BoxGeometry(cushW + border, 0.26 + border, 0.14 + border),
+            fabDark
+          );
+          backBorder.position.set(cx, 0.42, th / 2 - 0.09);
+          g.add(backBorder);
+          // Back cushion (couch color)
           const backCush = new THREE.Mesh(
-            new THREE.BoxGeometry(cushW - 0.02, 0.22, 0.10),
+            new THREE.BoxGeometry(cushW, 0.26, 0.14),
             fab
           );
-          backCush.position.set(cx, 0.40, th / 2 - 0.08);
+          backCush.position.set(cx, 0.42, th / 2 - 0.09);
           backCush.castShadow = true; backCush.receiveShadow = true;
           g.add(backCush);
-          // Rounded top for back cushion
-          const backPuff = new THREE.Mesh(
-            new THREE.SphereGeometry(cushW * 0.42, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
-            fab
-          );
-          backPuff.rotation.y = Math.PI / 2;
-          backPuff.position.set(cx, 0.51, th / 2 - 0.08);
-          backPuff.castShadow = true;
-          g.add(backPuff);
         }
 
         // ── Back frame (behind cushions) ──
@@ -1677,10 +1688,16 @@ export class Game {
         // ── Arms — thick, padded, rounded tops (Ciello-style) ──
         for (const side of [-1, 1]) {
           const ax = side * (tw / 2 - armW / 2);
-          // Arm body
+          // Arm body (same color as couch fabric, darker border outline)
+          const armBorder = new THREE.Mesh(
+            new THREE.BoxGeometry(armW + 0.008, 0.25 + 0.008, th + 0.008),
+            fabDark
+          );
+          armBorder.position.set(ax, 0.33, 0);
+          g.add(armBorder);
           const arm = new THREE.Mesh(
             new THREE.BoxGeometry(armW, 0.25, th),
-            fabDark
+            fab
           );
           arm.position.set(ax, 0.33, 0);
           arm.castShadow = true; arm.receiveShadow = true;
@@ -2871,19 +2888,19 @@ export class Game {
       const legGroup = new THREE.Group();
       legGroup.position.set(xOff, 0.30, 0);
       // Thigh
-      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.15, 6), legMat);
-      thigh.position.y = -0.075;
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.28, 6), legMat);
+      thigh.position.y = -0.14;
       thigh.castShadow = true;
       legGroup.add(thigh);
       // Knee pivot (calf + shoe hang from here)
       const knee = new THREE.Group();
-      knee.position.y = -0.15;
-      const calf = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.15, 6), legMat);
-      calf.position.y = -0.075;
+      knee.position.y = -0.28;
+      const calf = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.28, 6), legMat);
+      calf.position.y = -0.14;
       calf.castShadow = true;
       knee.add(calf);
       const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), shoeMat);
-      shoe.position.set(0, -0.14, 0.01);
+      shoe.position.set(0, -0.27, 0.01);
       knee.add(shoe);
       legGroup.add(knee);
       g.add(legGroup);
@@ -2932,7 +2949,7 @@ export class Game {
     const foreArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
     foreArmL.position.y = -0.22;
     leftArm.add(foreArmL);
-    leftArm.position.set(-0.17, shoulderY, 0);
+    leftArm.position.set(-0.23, shoulderY, 0);
     leftArm.castShadow = true;
     g.add(leftArm);
     this.momLeftArm = leftArm;
@@ -2944,7 +2961,7 @@ export class Game {
     const foreArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
     foreArmR.position.y = -0.22;
     rightArm.add(foreArmR);
-    rightArm.position.set(0.17, shoulderY, 0);
+    rightArm.position.set(0.23, shoulderY, 0);
     rightArm.castShadow = true;
     g.add(rightArm);
     this.momRightArm = rightArm;
@@ -3609,10 +3626,12 @@ export class Game {
       } else if (person.speed < 0 && person.group.position.x < person.minX) {
         person.group.position.x = person.maxX;
       }
-      // Leg swing animation
+      // Leg and arm swing animation
       const swing = Math.sin(time * 4) * 0.35;
       person.leftLeg.rotation.x = swing;
       person.rightLeg.rotation.x = -swing;
+      person.leftArm.rotation.x = -swing * 0.7;
+      person.rightArm.rotation.x = swing * 0.7;
     }
   }
 
@@ -4038,30 +4057,31 @@ export class Game {
         if (this.momHead) this.momHead.rotation.x = lerp(0, 0.15, t);
         break;
       }
-      // ── Phase 4: Left leg lifts from knee — calf straightens onto coffee table ──
+      // ── Phase 4: Both calves extend, angled slightly forward so ankles reach table ──
       case 4: {
-        if (this.momLeftCalf) {
-          // From 90° bent (π/2) to straight (0) — extends leg fully horizontal
-          this.momLeftCalf.rotation.x = lerp(Math.PI / 2, 0, t);
-        }
+        if (this.momLeftCalf)  this.momLeftCalf.rotation.x  = lerp(Math.PI / 2, -0.3, t);
+        if (this.momRightCalf) this.momRightCalf.rotation.x = lerp(Math.PI / 2, -0.3, t);
         break;
       }
-      // ── Phase 5: Right leg lifts from knee — calf straightens onto coffee table ──
+      // ── Phase 5: Right leg crosses over left at ankle ──
       case 5: {
-        if (this.momRightCalf) {
-          this.momRightCalf.rotation.x = lerp(Math.PI / 2, 0, t);
+        if (this.momRightLeg) {
+          // Cross right leg over left: rotate z inward (to the left)
+          this.momRightLeg.rotation.z = lerp(0, -0.35, t);
+          // Raise right leg slightly so ankle clears left
+          this.momRightLeg.rotation.x = lerp(-Math.PI / 2, -Math.PI / 2 - 0.12, t);
         }
         break;
       }
       // ── Phase 6: Arms drape over armrests ──
       case 6: {
         if (this.momLeftArm) {
-          this.momLeftArm.rotation.z = lerp(0, 0.6, t);
-          this.momLeftArm.rotation.x = lerp(0, 0.4, t);
+          this.momLeftArm.rotation.z = lerp(0, 0.9, t);
+          this.momLeftArm.rotation.x = lerp(0, 0.2, t);
         }
         if (this.momRightArm) {
-          this.momRightArm.rotation.z = lerp(0, -0.6, t);
-          this.momRightArm.rotation.x = lerp(0, 0.4, t);
+          this.momRightArm.rotation.z = lerp(0, -0.9, t);
+          this.momRightArm.rotation.x = lerp(0, 0.2, t);
         }
         break;
       }
@@ -4084,7 +4104,7 @@ export class Game {
         if (this.relaxSeatPos) this.mom.position.copy(this.relaxSeatPos);
         const couchFurn = this.level.furniture.find(f => f.label === "couch");
         if (couchFurn) {
-          this.momPos.x = couchFurn.x + couchFurn.w / 2 - 0.5;
+          this.momPos.x = couchFurn.x + couchFurn.w / 2 - 0.5 + couchFurn.w * 0.25;
           this.momPos.z = couchFurn.z + couchFurn.h / 2 - 0.5;
         }
       }
@@ -4105,8 +4125,8 @@ export class Game {
       case "cheese-reach": {
         // Right arm reaches forward toward coffee table
         if (this.momRightArm) {
-          this.momRightArm.rotation.x = lerp(0.2, -1.0, eased);
-          this.momRightArm.rotation.z = lerp(-0.3, -0.1, eased);
+          this.momRightArm.rotation.x = lerp(0.4, -1.0, eased);
+          this.momRightArm.rotation.z = lerp(-0.6, -0.1, eased);
         }
         if (t >= 1) {
           // Grab the cheese piece — hide it
@@ -4130,7 +4150,7 @@ export class Game {
         }
         // Head tilts forward slightly to "eat"
         if (this.momHead && t > 0.3 && t < 0.7) {
-          this.momHead.rotation.x = lerp(-0.1, 0.05, (t - 0.3) / 0.4);
+          this.momHead.rotation.x = lerp(0.15, 0.05, (t - 0.3) / 0.4);
         }
         if (t >= 1) {
           this.relaxAnim = { type: "cheese-return", elapsed: 0, duration: 0.4 };
@@ -4138,12 +4158,12 @@ export class Game {
         break;
       }
       case "cheese-return": {
-        // Return arm to resting position
+        // Return arm to resting position (phase 6 pose: x=0.2, z=-0.9)
         if (this.momRightArm) {
           this.momRightArm.rotation.x = lerp(-0.3, 0.2, eased);
-          this.momRightArm.rotation.z = lerp(-0.15, -0.3, eased);
+          this.momRightArm.rotation.z = lerp(-0.15, -0.9, eased);
         }
-        if (this.momHead) this.momHead.rotation.x = lerp(0.05, -0.1, eased);
+        if (this.momHead) this.momHead.rotation.x = lerp(0.05, 0.15, eased);
         if (t >= 1) {
           this.relaxAnim = { type: "idle", elapsed: 0, duration: 0 };
         }
@@ -4151,75 +4171,91 @@ export class Game {
       }
       case "wine-reach": {
         // Left arm reaches to the side (toward side table)
-        // Resting pose from phase 6: x=0.4, z=0.6
+        // Resting pose from phase 6: x=0.2, z=0.9
         if (this.momLeftArm) {
-          this.momLeftArm.rotation.x = lerp(0.4, -0.4, eased);
-          this.momLeftArm.rotation.z = lerp(0.6, 0.8, eased);
+          this.momLeftArm.rotation.x = lerp(0.2, -0.4, eased);
+          this.momLeftArm.rotation.z = lerp(0.9, 0.8, eased);
         }
         if (t >= 1) {
-          // Attach wine glass to mom's left arm
+          // Attach wine glass below the forearm tip so it doesn't clip through the arm
           if (this.relaxWineGlass && this.momLeftArm) {
             this.momLeftArm.add(this.relaxWineGlass);
-            this.relaxWineGlass.position.set(0, -0.28, 0);
+            this.relaxWineGlass.position.set(0, -0.34, 0);
             this.relaxWineGlass.rotation.set(0, 0, 0);
           }
-          this.relaxAnim = { type: "wine-drink", elapsed: 0, duration: 0.8 };
+          this.relaxAnim = { type: "wine-drink", elapsed: 0, duration: 2.5 };
         }
         break;
       }
       case "wine-drink": {
-        // Bring arm from side to mouth (across body and up)
+        // Phase 1 (0–0.35): raise arm toward mouth
+        // Phase 2 (0.35–0.6): glass tilts from vertical to horizontal (–π/2)
+        // Phase 3 (0.6–0.75): hold glass horizontal (drinking)
+        // Phase 4 (0.75–1.0): glass rotates back from horizontal to vertical
         if (this.momLeftArm) {
-          // Phase 1: bring to mouth (first 50%)
-          if (t < 0.5) {
-            const subT = easeOutQuad(t / 0.5);
+          if (t < 0.35) {
+            const subT = easeOutQuad(t / 0.35);
             this.momLeftArm.rotation.x = lerp(-0.4, -2.0, subT);
-            this.momLeftArm.rotation.z = lerp(0.8, 0.25, subT);
-          }
-          // Phase 2: tip glass and drink (50-100%)
-          else {
-            const subT = (t - 0.5) / 0.5;
-            this.momLeftArm.rotation.x = lerp(-2.0, -1.8, subT);
-            this.momLeftArm.rotation.z = lerp(0.25, 0.3, Math.sin(subT * Math.PI) * 0.5 + 0.5);
-          }
-        }
-        // Tilt wine glass to pour into mouth
-        if (this.relaxWineGlass) {
-          if (t > 0.4 && t < 0.85) {
-            const pourT = (t - 0.4) / 0.45;
-            this.relaxWineGlass.rotation.z = lerp(0, 0.7, Math.sin(pourT * Math.PI));
+            this.momLeftArm.rotation.z = lerp(0.8, 0.15, subT);
           } else {
-            this.relaxWineGlass.rotation.z = 0;
+            this.momLeftArm.rotation.x = -2.0;
+            this.momLeftArm.rotation.z = 0.15;
           }
         }
-        // Head tilts back for drinking
+        // Glass: vertical → horizontal → hold → vertical (clean linear tilt, no sin bounce)
+        if (this.relaxWineGlass) {
+          if (t >= 0.35 && t < 0.6) {
+            // Tilt to horizontal
+            this.relaxWineGlass.rotation.x = lerp(0, -Math.PI / 2, easeOutQuad((t - 0.35) / 0.25));
+          } else if (t >= 0.6 && t < 0.75) {
+            // Hold horizontal
+            this.relaxWineGlass.rotation.x = -Math.PI / 2;
+          } else if (t >= 0.75) {
+            // Rotate back to vertical
+            this.relaxWineGlass.rotation.x = lerp(-Math.PI / 2, 0, easeOutQuad((t - 0.75) / 0.25));
+          } else {
+            this.relaxWineGlass.rotation.x = 0;
+          }
+          this.relaxWineGlass.rotation.y = 0;
+          this.relaxWineGlass.rotation.z = 0;
+        }
+        // Head tilts back while glass is horizontal
         if (this.momHead) {
-          if (t > 0.3 && t < 0.8) {
-            const subH = (t - 0.3) / 0.5;
-            this.momHead.rotation.x = lerp(0.15, -0.15, subH);
-          } else if (t >= 0.8) {
-            this.momHead.rotation.x = lerp(-0.15, 0.15, (t - 0.8) / 0.2);
+          if (t > 0.5 && t < 0.75) {
+            this.momHead.rotation.x = lerp(0.15, -0.1, (t - 0.5) / 0.25);
+          } else if (t >= 0.75 && t < 0.95) {
+            this.momHead.rotation.x = lerp(-0.1, 0.15, (t - 0.75) / 0.2);
           }
         }
         if (t >= 1) {
-          this.relaxAnim = { type: "wine-return", elapsed: 0, duration: 0.5 };
-        }
-        break;
-      }
-      case "wine-return": {
-        // Return arm to resting position (x=0.4, z=0.6 from phase 6)
-        if (this.momLeftArm) {
-          this.momLeftArm.rotation.x = lerp(-1.8, 0.4, eased);
-          this.momLeftArm.rotation.z = lerp(0.3, 0.6, eased);
-        }
-        if (this.momHead) this.momHead.rotation.x = lerp(0.15, 0.15, eased);
-        if (t >= 1) {
-          // Return wine glass to side table
+          // Glass is vertical — snap it back to the table NOW so arm returns cleanly with no glass
           if (this.relaxWineGlass && this.relaxWineGlassOrigParent) {
             this.relaxWineGlassOrigParent.add(this.relaxWineGlass);
             this.relaxWineGlass.position.copy(this.relaxWineGlassOrigPos);
             this.relaxWineGlass.quaternion.copy(this.relaxWineGlassOrigQuat);
           }
+          this.relaxAnim = { type: "wine-return", elapsed: 0, duration: 1.5 };
+        }
+        break;
+      }
+      case "wine-return": {
+        // Phase 1 (0–0.45): lower arm from mouth back down toward side-table level
+        // Phase 2 (0.45–1.0): arm sweeps back to armrest resting position
+        // Glass is already on the table — no glass handling needed here
+        if (t < 0.45) {
+          const subT = easeOutQuad(t / 0.45);
+          if (this.momLeftArm) {
+            this.momLeftArm.rotation.x = lerp(-2.0, -0.4, subT);
+            this.momLeftArm.rotation.z = lerp(0.15, 0.8, subT);
+          }
+        } else {
+          const subT = easeOutQuad((t - 0.45) / 0.55);
+          if (this.momLeftArm) {
+            this.momLeftArm.rotation.x = lerp(-0.4, 0.2, subT);
+            this.momLeftArm.rotation.z = lerp(0.8, 0.9, subT);
+          }
+        }
+        if (t >= 1) {
           this.relaxAnim = { type: "idle", elapsed: 0, duration: 0 };
         }
         break;
@@ -4332,6 +4368,23 @@ export class Game {
     this.relaxClickCallback = cb;
   }
 
+  /** Dev shortcut: teleport Mom to goal and start the win zoom + sit animation */
+  jumpToWinSequence() {
+    const lvl = this.level;
+    this.momPos.x = lvl.goal.x;
+    this.momPos.z = lvl.goal.z;
+    this.mom.position.set(
+      (lvl.goal.x - this.cx) * TILE_SIZE,
+      TILE_H,
+      (lvl.goal.z - this.cz) * TILE_SIZE,
+    );
+    this.won = true;
+    AudioManager.play("success");
+    AudioManager.stopAmbient();
+    this.relaxZoomPhase = true;
+    this.relaxZoomElapsed = 0;
+  }
+
   /** Called from GameView after zoom completes for 3D relax scenes */
   enterRelaxScene() {
     this.relaxSceneActive = true;
@@ -4354,18 +4407,22 @@ export class Game {
       : this.mom.position.x - 0.3;
     // Center of couch in x (where she'll sit)
     const couchCenterX = couchGroup ? couchGroup.position.x : this.mom.position.x - 1.0;
-    // Seat z: center of the couch (she sits facing TV/south)
-    const seatZ = couchGroup ? couchGroup.position.z : gapZ - 0.3;
+    // Offset toward east end (closest to side table)
+    const seatOffsetX = couchFurn ? couchFurn.w * TILE_SIZE * 0.25 : 0;
+    const seatX = couchCenterX + seatOffsetX;
+    // Seat z: pushed toward back cushions (further back on the couch)
+    const th_couch = couchFurn ? couchFurn.h * TILE_SIZE : 1.0;
+    const seatZ = couchGroup ? couchGroup.position.z - th_couch * 0.28 : gapZ - 0.3;
     // Seat Y: Mom's hip bottom (local y=0.30) rests on couch seat top surface
     // Couch seat top = group.y(0.15) + seat center(0.25) + half-thickness(0.08) = 0.48
-    const seatTopY = (couchGroup?.position.y ?? TILE_H) + 0.33;
+    const seatTopY = (couchGroup?.position.y ?? TILE_H) + 0.34;
     const seatedMomY = seatTopY - 0.30; // hip pivot sits on seat surface
 
     this.relaxWaypoints = [
       new THREE.Vector3(gapEntryX, momY, gapZ),       // step 1: into the gap
-      new THREE.Vector3(couchCenterX, momY, gapZ),     // step 2: walk west through gap
+      new THREE.Vector3(seatX, momY, gapZ),            // step 2: walk to east seat (near side table)
     ];
-    this.relaxSeatPos = new THREE.Vector3(couchCenterX, seatedMomY, seatZ);
+    this.relaxSeatPos = new THREE.Vector3(seatX, seatedMomY, seatZ);
     this.relaxWalkStartPos = this.mom.position.clone();
     this.relaxStartRotY = this.mom.rotation.y;
 
@@ -4528,18 +4585,25 @@ export class Game {
       ];
       cheesePositions.forEach((pos, i) => {
         const piece = new THREE.Mesh(
-          new THREE.BoxGeometry(0.03, 0.02, 0.025),
+          new THREE.BoxGeometry(0.04, 0.025, 0.035),
           cheeseMat.clone()
         );
         piece.position.set(pos.x, 0.018, pos.z);
         piece.rotation.y = Math.random() * Math.PI;
         piece.castShadow = true;
-        piece.userData.relaxItem = "cheese";
-        piece.userData.cheeseIdx = i;
         trayGroup.add(piece);
         this.relaxCheesePieces.push(piece);
-        this.relaxClickables.push(piece);
       });
+
+      // Large invisible hitbox over the whole tray — easy to click
+      const cheeseHitbox = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.08, 0.20),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      cheeseHitbox.position.y = 0.04;
+      cheeseHitbox.userData.relaxItem = "cheese";
+      trayGroup.add(cheeseHitbox);
+      this.relaxClickables.push(cheeseHitbox);
 
       // Position tray on top of coffee table
       trayGroup.position.set(0, 0.22, 0);
@@ -4597,20 +4661,15 @@ export class Game {
     if (!itemId) return false;
 
     if (itemId === "cheese") {
-      // Find which cheese piece was clicked
-      const cheeseMesh = this.relaxCheesePieces.find(p => {
-        let obj: THREE.Object3D | null = hits[0].object;
-        while (obj) { if (obj === p) return true; obj = obj.parent; }
-        return false;
-      });
-      if (!cheeseMesh) return false;
+      if (this.relaxCheesePieces.length === 0) return false;
+      const cheeseMesh = this.relaxCheesePieces[0];
       this.relaxAnim = { type: "cheese-reach", elapsed: 0, duration: 0.5, target: cheeseMesh };
       this.relaxClickCallback?.("cheese", "That's some Goud-a cheese!", clientX, clientY);
       return true;
     }
 
     if (itemId === "wine") {
-      this.relaxAnim = { type: "wine-reach", elapsed: 0, duration: 0.5 };
+      this.relaxAnim = { type: "wine-reach", elapsed: 0, duration: 1.0 };
       this.relaxClickCallback?.("wine", "Momma needed her bottle", clientX, clientY);
       return true;
     }

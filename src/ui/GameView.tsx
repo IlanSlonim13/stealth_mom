@@ -70,7 +70,8 @@ export function GameView() {
         return;
       }
       const level = LEVELS[levelIdx];
-      const skipToRelax = useGameStore.getState().relaxActive;
+      const skipToRelax = useGameStore.getState().skipToEnd;
+      if (skipToRelax) useGameStore.getState().setSkipToEnd(false);
       const game = new Game(el, level, {
         onCaught: (line) => { setCaughtLine(line); setScreen("caught"); },
         onWon: (text)   => { setWinText(text); },
@@ -96,14 +97,9 @@ export function GameView() {
           game.enterRelaxScene();
         }
       });
-      // Dev shortcut: jump straight to level-end relax scene
+      // Dev shortcut: jump straight to level-end win sequence
       if (skipToRelax) {
-        AudioManager.preload(["mom-sigh"]);
-        setTimeout(() => AudioManager.play("mom-sigh"), 2800);
-        const rd = RELAX_DATA[level.id];
-        if (rd?.sceneMode === "3d") {
-          game.enterRelaxScene();
-        }
+        game.jumpToWinSequence();
       }
       game.setRelaxClickCallback((itemId, feedback, screenX, screenY) => {
         feedbackKey.current++;
