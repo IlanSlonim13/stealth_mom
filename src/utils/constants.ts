@@ -25,3 +25,7 @@ export const PICKUP_RANGE = 5.6;
 export const INTRO_HOLD_SECS = 1.5;
 export const INTRO_ZOOM_SECS = 2.0;
 export const RELAX_BUTTON_DELAY_MS = 6000;
+
+export const COFFEE_BREW_SECS = 30;
+export const COFFEE_COLD_SECS = 60;
+export const TASK_INTERACT_RANGE = 5.6;

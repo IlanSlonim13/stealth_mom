@@ -8,6 +8,7 @@ import { RELAX_DATA } from "../world/relaxData";
 import { LEVEL1_TUTORIAL } from "../world/tutorialData";
 import { AudioManager } from "../engine/AudioManager";
 import { RELAX_BUTTON_DELAY_MS } from "../utils/constants";
+import type { TaskStatus } from "../state/gameStore";
 import { HUD } from "./HUD";
 
 interface ClickFeedback {
@@ -34,6 +35,10 @@ export function GameView() {
   const setIntroActive = useGameStore((s) => s.setIntroActive);
   const setRelaxActive = useGameStore((s) => s.setRelaxActive);
   const startLevel     = useGameStore((s) => s.startLevel);
+  const setNearTask    = useGameStore((s) => s.setNearTask);
+  const setTaskStatuses = useGameStore((s) => s.setTaskStatuses);
+  const setCoffeeTimer = useGameStore((s) => s.setCoffeeTimer);
+  const setTaskItem    = useGameStore((s) => s.setTaskItem);
 
   const [bubbleFading, setBubbleFading] = useState(false);
   const [momScreenPos, setMomScreenPos] = useState<{ x: number; y: number } | null>(null);
@@ -50,6 +55,30 @@ export function GameView() {
   const [showNextBtn, setShowNextBtn] = useState(false);
   const [relaxQuoteVisible, setRelaxQuoteVisible] = useState(false);
   const feedbackKey = useRef(0);
+
+  // Animation debug overlay — polls Game.animDebug each frame
+  const [animDebug, setAnimDebug] = useState("");
+  const [debugEnabled, setDebugEnabled] = useState(false);
+  const [animSpeed, setAnimSpeed] = useState(1.0);
+  useEffect(() => {
+    let id: number;
+    const tick = () => {
+      const g = gameRef.current;
+      if (g) setAnimDebug(g.animDebug);
+      id = requestAnimationFrame(tick);
+    };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, []);
+  // Sync toggle and speed to Game instance
+  useEffect(() => {
+    const g = gameRef.current;
+    if (g) { g.animDebugEnabled = debugEnabled; if (!debugEnabled) g.animDebug = ""; }
+  }, [debugEnabled]);
+  useEffect(() => {
+    const g = gameRef.current;
+    if (g) g.animSpeed = animSpeed;
+  }, [animSpeed]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -76,6 +105,10 @@ export function GameView() {
         onCaught: (line) => { setCaughtLine(line); setScreen("caught"); },
         onWon: (text)   => { setWinText(text); },
         onNearPickup: (itemName) => setNearPickup(itemName),
+        onNearTask: (taskId) => setNearTask(taskId),
+        onCoffeeTimer: (fraction) => setCoffeeTimer(fraction),
+        onTaskUpdate: (statuses) => setTaskStatuses(statuses as Record<string, TaskStatus>),
+        onTaskItem: (item) => setTaskItem(item),
       });
       // if (level.id === 1) game.setIntroPaused(true); // tutorial disabled for dev
       game.setIntroCompleteCallback(() => {
@@ -207,8 +240,58 @@ export function GameView() {
         style={{ width: "100%", height: "100%", touchAction: "none" }}
       />
 
+      {/* Debug controls (top-left corner, below HUD) */}
+      <div style={{
+        position: "absolute", top: 48, right: 14,
+        display: "flex", gap: 6, alignItems: "center",
+        zIndex: 999, pointerEvents: "auto",
+      }}>
+        <button
+          onClick={() => setDebugEnabled(v => !v)}
+          style={{
+            background: debugEnabled ? "rgba(0,255,0,0.3)" : "rgba(0,0,0,0.4)",
+            border: `1px solid ${debugEnabled ? "#0F0" : "rgba(255,255,255,0.15)"}`,
+            borderRadius: 4, color: debugEnabled ? "#0F0" : "#888",
+            fontFamily: "monospace", fontSize: 10, padding: "3px 8px", cursor: "pointer",
+          }}
+        >
+          DBG
+        </button>
+        {debugEnabled && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 4,
+            background: "rgba(0,0,0,0.6)", borderRadius: 4, padding: "2px 6px",
+          }}>
+            <span style={{ color: "#0F0", fontFamily: "monospace", fontSize: 9 }}>
+              {animSpeed.toFixed(1)}x
+            </span>
+            <input
+              type="range" min="0.05" max="1" step="0.05"
+              value={animSpeed}
+              onChange={e => setAnimSpeed(parseFloat(e.target.value))}
+              style={{ width: 60, accentColor: "#0F0" }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Animation debug overlay */}
+      {debugEnabled && animDebug && (
+        <div style={{
+          position: "absolute", bottom: 8, left: 8, right: 8,
+          background: "rgba(0,0,0,0.75)", color: "#0F0",
+          fontFamily: "monospace", fontSize: 11, padding: "6px 10px",
+          borderRadius: 4, pointerEvents: "none", whiteSpace: "pre-wrap",
+          zIndex: 999,
+        }}>
+          {animDebug}
+        </div>
+      )}
+
       {/* HUD — hidden during intro and relaxation */}
-      {!introActive && !relaxActive && <HUD />}
+      {!introActive && !relaxActive && (
+        <HUD onPerformTask={(taskId) => gameRef.current?.performTask(taskId)} />
+      )}
 
       {/* Intro speech bubble overlay */}
       {introActive && (

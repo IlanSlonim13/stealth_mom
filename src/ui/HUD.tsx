@@ -1,7 +1,11 @@
 import { useGameStore } from "../state/gameStore";
 import { LEVELS } from "../world/levels";
 
-export function HUD() {
+export interface HUDProps {
+  onPerformTask?: (taskId: string) => void;
+}
+
+export function HUD({ onPerformTask }: HUDProps = {}) {
   const levelIdx    = useGameStore((s) => s.levelIdx);
   const decoyMode   = useGameStore((s) => s.decoyMode);
   const inventory   = useGameStore((s) => s.inventory);
@@ -12,7 +16,14 @@ export function HUD() {
   const pickUpDecoy = useGameStore((s) => s.pickUpDecoy);
   const throwDecoy  = useGameStore((s) => s.throwDecoy);
 
+  // Task-mode state
+  const nearTask      = useGameStore((s) => s.nearTask);
+  const taskStatuses  = useGameStore((s) => s.taskStatuses);
+  const coffeeTimer   = useGameStore((s) => s.coffeeTimer);
+  const taskItem      = useGameStore((s) => s.taskItem);
+
   const level = LEVELS[levelIdx];
+  const isTaskMode = level.levelMode === "tasks";
   const hasDecoyItems = (level.decoyItems?.length ?? 0) > 0;
 
   const hudBtn: React.CSSProperties = {
@@ -31,6 +42,9 @@ export function HUD() {
   // Find pickup-able item definition
   const pickupDef = level.decoyItems?.find((d) => d.itemName === nearPickup);
 
+  // Task label for nearby task
+  const nearTaskDef = isTaskMode ? level.tasks?.find(t => t.id === nearTask) : null;
+
   return (
     <>
       {/* Top bar */}
@@ -48,8 +62,96 @@ export function HUD() {
         </button>
       </div>
 
-      {/* Bottom action area */}
-      {hasDecoyItems && (
+      {/* Coffee timer (top-right, task mode only) */}
+      {isTaskMode && coffeeTimer < 1 && coffeeTimer > 0 && (
+        <div style={{
+          position: "absolute", top: 48, right: 14,
+          pointerEvents: "none",
+        }}>
+          <svg width={48} height={48} viewBox="0 0 48 48">
+            <circle cx={24} cy={24} r={20} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={4} />
+            <circle
+              cx={24} cy={24} r={20}
+              fill="none"
+              stroke={coffeeTimer > 0.5 ? "#44AA44" : coffeeTimer > 0.25 ? "#CCAA00" : "#CC3333"}
+              strokeWidth={4}
+              strokeDasharray={`${coffeeTimer * 125.6} 125.6`}
+              strokeLinecap="round"
+              transform="rotate(-90 24 24)"
+            />
+            <text x={24} y={28} textAnchor="middle" fill="#FFF" fontSize={14} fontFamily="Georgia, serif">
+              ☕
+            </text>
+          </svg>
+        </div>
+      )}
+
+      {/* Task checklist (left side, task mode only) */}
+      {isTaskMode && level.tasks && (
+        <div style={{
+          position: "absolute", top: 48, left: 10,
+          display: "flex", flexDirection: "column", gap: 2,
+          pointerEvents: "none", maxHeight: "60vh", overflowY: "auto",
+        }}>
+          {level.tasks.filter(t => t.autoComplete === 0).map(t => {
+            const status = taskStatuses[t.id] ?? "locked";
+            const isDone = status === "done";
+            const isActive = status === "active";
+            const isAvailable = status === "available";
+            return (
+              <div key={t.id} style={{
+                fontFamily: "Georgia, serif",
+                fontSize: 10,
+                color: isDone ? "#88CC88" : isActive ? "#FFD700" : isAvailable ? "#FFF" : "rgba(255,255,255,0.35)",
+                letterSpacing: 0.5,
+                display: "flex", alignItems: "center", gap: 4,
+                textDecoration: isDone ? "line-through" : "none",
+              }}>
+                <span style={{ fontSize: 11 }}>{isDone ? "✓" : isActive ? "⏳" : "○"}</span>
+                {t.label}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Task item indicator (task mode) */}
+      {isTaskMode && taskItem && (
+        <div style={{
+          position: "absolute", bottom: 60,
+          left: "50%", transform: "translateX(-50%)",
+          ...hudBtn, pointerEvents: "none", fontSize: 10,
+          opacity: 0.8, padding: "3px 10px",
+        }}>
+          Carrying: {taskItem}
+        </div>
+      )}
+
+      {/* Task action button (bottom center, task mode) */}
+      {isTaskMode && nearTaskDef && (
+        <div style={{
+          position: "absolute", bottom: 20,
+          left: "50%", transform: "translateX(-50%)",
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+        }}>
+          <button
+            onClick={() => onPerformTask?.(nearTaskDef.id)}
+            style={{
+              background: "rgba(255,215,0,0.25)",
+              border: "1px solid rgba(255,215,0,0.7)",
+              borderRadius: 8, color: "#FFD700", padding: "8px 22px",
+              fontSize: 13, cursor: "pointer",
+              backdropFilter: "blur(8px)", fontFamily: "Georgia, serif", letterSpacing: 1,
+              animation: "pulse 1s ease-in-out infinite",
+            }}
+          >
+            {nearTaskDef.label.toUpperCase()}
+          </button>
+        </div>
+      )}
+
+      {/* Bottom action area (stealth mode) */}
+      {!isTaskMode && hasDecoyItems && (
         <div style={{
           position: "absolute", bottom: 20,
           left: "50%", transform: "translateX(-50%)",

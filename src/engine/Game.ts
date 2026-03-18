@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { DecoyItemDef, FurnitureDef, LevelData, NpcDef } from "../world/LevelTypes";
+import type { DecoyItemDef, FurnitureDef, LevelData, NpcDef, TaskDef } from "../world/LevelTypes";
 import { MOM_OUTFITS, PALETTES } from "../world/LevelTypes";
 import {
   TILE_H, TILE_SIZE, SNEAK_SPEED, PICKUP_RANGE,
@@ -7,8 +7,9 @@ import {
   HUSBAND_CONE_RANGE, HUSBAND_CONE_ANGLE, HUSBAND_SPEED,
   CAUGHT_DELAY_MS, WIN_DELAY_MS, LURE_INVESTIGATE_SECS, LURE_SPEED_MULTIPLIER,
   INTRO_HOLD_SECS, INTRO_ZOOM_SECS,
+  TASK_INTERACT_RANGE,
 } from "../utils/constants";
-import { easeOutQuad, lerp } from "../utils/easing";
+import { easeOutQuad, easeInOutQuad, lerp } from "../utils/easing";
 import { dist2d, pointInCone } from "../utils/coordinates";
 import { findPath } from "../pathfinding/Pathfinder";
 import { pickRandom } from "../utils/humor";
@@ -77,10 +78,24 @@ interface NpcState {
   rightArm?: THREE.Object3D;
 }
 
+type TaskRuntimeStatus = "locked" | "available" | "active" | "done";
+
+interface TaskState {
+  def: TaskDef;
+  status: TaskRuntimeStatus;
+  timer: number; // elapsed seconds for duration/autoComplete
+}
+
+type DogAIState = "idle" | "eating" | "done" | "exiting";
+
 export interface GameCallbacks {
   onCaught: (line: string) => void;
   onWon: (text: string) => void;
   onNearPickup: (itemName: string | null) => void;
+  onNearTask?: (taskId: string | null) => void;
+  onCoffeeTimer?: (fraction: number) => void;
+  onTaskUpdate?: (statuses: Record<string, TaskRuntimeStatus>) => void;
+  onTaskItem?: (item: string | null) => void;
 }
 
 // ── Game ───────────────────────────────────────────────────────────────────
@@ -104,6 +119,7 @@ export class Game {
   private momPathIdx = 0;
   private momHead: THREE.Object3D | null = null;
   private momHeadBaseY = 0;
+  private momTorso: THREE.Group | null = null;
   private momLower: THREE.Object3D | null = null;
   private momLeftLeg: THREE.Object3D | null = null;
   private momRightLeg: THREE.Object3D | null = null;
@@ -167,16 +183,40 @@ export class Game {
   private relaxWineGlassOrigParent: THREE.Object3D | null = null;
   private relaxWineGlassOrigPos = new THREE.Vector3();
   private relaxWineGlassOrigQuat = new THREE.Quaternion();
+  private momLeftElbow: THREE.Group | null = null;
+  // Wine IK animation
+  private wineIKActive = false;
+  private wineGlassTilt = 0;
+  private wineLiquidFill = 1.0;
+  private wineLiquidClipPlane: THREE.Plane | null = null;
+  private wineLiquidMesh: THREE.Mesh | null = null;
+  private wineLiquidBaseY = 0;
+  private relaxCheeseInHand: THREE.Mesh | null = null;
   private relaxTvScreen: THREE.Mesh | null = null;
   private relaxTvLight: THREE.PointLight | null = null;
 
   // Relax animation state machine
   private relaxAnim: {
-    type: "idle" | "cheese-reach" | "cheese-eat" | "cheese-return" | "wine-reach" | "wine-drink" | "wine-return";
+    type: "idle" | "cheese-reach" | "cheese-eat" | "cheese-return" | "wine-reach" | "wine-drink" | "wine-return" | "wine-refill";
     elapsed: number;
     duration: number;
     target?: THREE.Mesh; // cheese piece being eaten
   } = { type: "idle", elapsed: 0, duration: 0 };
+
+  /** Debug string updated each frame — visible in UI overlay */
+  public animDebug = "";
+  /** Debug toggle — when false, animDebug stays empty */
+  private _animDebugEnabled = false;
+  public get animDebugEnabled() { return this._animDebugEnabled; }
+  public set animDebugEnabled(v: boolean) {
+    if (v === this._animDebugEnabled) return;
+    this._animDebugEnabled = v;
+    for (const s of this.tileLabels) s.visible = v;
+  }
+  /** Animation speed multiplier (1.0 = normal, 0.1 = 10x slower) */
+  public animSpeed = 1.0;
+  /** Tile coordinate labels (sprites), toggled with debug mode */
+  private tileLabels: THREE.Sprite[] = [];
 
   // Relax animation — multi-phase sit-down sequence
   // Phases: 0=walk-step1, 1=walk-step2, 2=turn-and-sit, 3=head-settle,
@@ -187,6 +227,20 @@ export class Game {
   private relaxWalkStartPos: THREE.Vector3 | null = null;
   private relaxStartRotY = 0;
   private relaxSeatPos: THREE.Vector3 | null = null; // couch seat position
+
+  // ── Task-mode state (Level 6+) ─────────────────────────────────────────────
+  private taskStates: Map<string, TaskState> = new Map();
+  private coffeeBrewTimer = 0;  // seconds elapsed since startCoffee
+  private coffeeBrewDone = false;
+  private coffeeColdTimer = 0;  // seconds elapsed since brew completed
+  private coffeeColdStarted = false;
+  private coffeeTimerRing: THREE.Mesh | null = null;
+  private coffeeTimerRingMat: THREE.MeshBasicMaterial | null = null;
+  private steamParticles: THREE.Mesh[] = [];
+  private taskItem: string | null = null; // item held for task mode
+  private dogAIState: DogAIState = "idle";
+  private dogAITimer = 0;
+  private performingTask: { id: string; elapsed: number; duration: number } | null = null;
 
   private level: LevelData;
   private callbacks: GameCallbacks;
@@ -219,11 +273,13 @@ export class Game {
       this.allWallSet.add(`${x},${z}`);
     });
     lvl.furniture.forEach((f) => {
-      if (f.shape === "door") return; // doors are walkable
+      if (f.shape === "door" || f.shape === "dogBowl") return; // doors and dog bowls are walkable
       for (let dx = 0; dx < f.w; dx++)
         for (let dz = 0; dz < f.h; dz++)
           this.blocked.add(`${f.x + dx},${f.z + dz}`);
     });
+    // Unblock the goal tile so Mom can walk onto it even if furniture overlaps
+    this.blocked.delete(`${lvl.goal.x},${lvl.goal.z}`);
 
     // Scene
     this.scene = new THREE.Scene();
@@ -252,6 +308,7 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.localClippingEnabled = true;
     el.appendChild(this.renderer.domElement);
 
     // Lights
@@ -273,6 +330,7 @@ export class Game {
     this.buildMom(lvl);
     this.buildNpcs(lvl);
     this.buildHidingSpots(lvl);
+    this.initTasks(lvl);
 
     // Start camera centered on Mom for intro zoom
     const momWorldX = (lvl.playerStart.x - this.cx) * TILE_SIZE;
@@ -1047,18 +1105,46 @@ export class Game {
     for (let x = 0; x < W; x++) {
       for (let z = 0; z < H; z++) {
         const isWall = this.allWallSet.has(`${x},${z}`);
+        // Skip floor tiles on wall positions (outside house boundary)
+        if (isWall) continue;
         const isRug = lvl.rug && x >= lvl.rug.x && x < lvl.rug.x + lvl.rug.w
           && z >= lvl.rug.z && z < lvl.rug.z + lvl.rug.h;
-        // Wall tiles use checkerboard floor color — hidden by wall panels
         const col = isRug ? palette.rug
           : (x + z) % 2 === 0 ? palette.floor1 : palette.floor2;
         const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6 });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set((x - this.cx) * TS, TILE_H / 2, (z - this.cz) * TS);
         mesh.receiveShadow = true;
-        mesh.userData = { gx: x, gz: z, isWall, baseColor: col };
+        mesh.userData = { gx: x, gz: z, isWall: false, baseColor: col };
         this.scene.add(mesh);
-        if (!isWall) this.tileMeshes.push(mesh);
+        this.tileMeshes.push(mesh);
+
+        // Tile coordinate label (hidden by default, shown in debug mode)
+        const canvas = document.createElement("canvas");
+        canvas.width = 64; canvas.height = 32;
+        const ctx = canvas.getContext("2d")!;
+        const txt = `${x},${z}`;
+        ctx.font = "bold 13px monospace";
+        const tw2 = ctx.measureText(txt).width;
+        const padX = 4, padY = 3;
+        const bgW = tw2 + padX * 2, bgH = 14 + padY * 2;
+        ctx.fillStyle = "rgba(0,0,0,0.4)";
+        ctx.beginPath();
+        ctx.roundRect((64 - bgW) / 2, (32 - bgH) / 2, bgW, bgH, 3);
+        ctx.fill();
+        ctx.fillStyle = "#FFF";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(txt, 32, 16);
+        const tex = new THREE.CanvasTexture(canvas);
+        const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set((x - this.cx) * TS, TILE_H + 0.01, (z - this.cz) * TS);
+        sprite.scale.set(TS * 0.7, TS * 0.35, 1);
+        sprite.renderOrder = 999;
+        sprite.visible = false;
+        this.scene.add(sprite);
+        this.tileLabels.push(sprite);
       }
     }
   }
@@ -1631,87 +1717,105 @@ export class Game {
         const fabDark = std(f.col + "AA", 0.8);
         const fabLight = std(f.col, 0.85, 0.02);
 
-        // Base/frame (hidden under cushions, slightly visible at edges)
-        add(new THREE.BoxGeometry(tw, 0.10, th), fabDark, 0.20);
-
-        // ── Seat cushions — 3 square cushions with outline ──
-        const numCush = 3;
+        // Layout: regular 3-seat sofa in back half, chaise extension on -X side (couch's left when facing -Z)
         const armW = 0.20;
-        const innerW = tw - armW * 2;
-        const gap = 0.018;
-        const cushW = (innerW - gap * (numCush - 1)) / numCush;
-        const cushH = 0.14;
-        const cushD = th * 0.90;
         const border = 0.008;
-        for (let i = 0; i < numCush; i++) {
+        const gap = 0.018;
+        const cushH = 0.14;
+
+        // The sofa section occupies the back portion (high Z in local space)
+        const sofaD = tw * 0.40; // depth of sofa seating area (Z-axis)
+        const sofaBackZ = th / 2; // back edge of couch
+        const sofaCenterZ = sofaBackZ - sofaD / 2; // center of sofa seat area
+
+        // Base/frame for the sofa section
+        const sofaBase = new THREE.Mesh(new THREE.BoxGeometry(tw, 0.10, sofaD), fabDark);
+        sofaBase.position.set(0, 0.20, sofaCenterZ);
+        g.add(sofaBase);
+
+        // ── Seat cushions — 3 cushions across the sofa width ──
+        const innerW = tw - armW * 2;
+        const cushW = (innerW - gap * 2) / 3;
+        const cushD = sofaD * 0.90;
+        for (let i = 0; i < 3; i++) {
           const cx = -innerW / 2 + cushW / 2 + i * (cushW + gap);
-          // Dark outline box (slightly larger)
           const cushBorder = new THREE.Mesh(
-            new THREE.BoxGeometry(cushW + border, cushH + border, cushD + border),
-            fabDark
+            new THREE.BoxGeometry(cushW + border, cushH + border, cushD + border), fabDark
           );
-          cushBorder.position.set(cx, 0.27, -th * 0.08);
+          cushBorder.position.set(cx, 0.27, sofaCenterZ);
           g.add(cushBorder);
-          // Main cushion (couch color)
-          const cush = new THREE.Mesh(
-            new THREE.BoxGeometry(cushW, cushH, cushD),
-            fab
-          );
-          cush.position.set(cx, 0.27, -th * 0.08);
+          const cush = new THREE.Mesh(new THREE.BoxGeometry(cushW, cushH, cushD), fab);
+          cush.position.set(cx, 0.27, sofaCenterZ);
           cush.castShadow = true; cush.receiveShadow = true;
           g.add(cush);
         }
 
-        // ── Back cushions — 3 square cushions with outline ──
-        for (let i = 0; i < numCush; i++) {
+        // ── Back cushions — 3 along the back ──
+        for (let i = 0; i < 3; i++) {
           const cx = -innerW / 2 + cushW / 2 + i * (cushW + gap);
-          // Dark outline
           const backBorder = new THREE.Mesh(
-            new THREE.BoxGeometry(cushW + border, 0.26 + border, 0.14 + border),
-            fabDark
+            new THREE.BoxGeometry(cushW + border, 0.26 + border, 0.14 + border), fabDark
           );
-          backBorder.position.set(cx, 0.42, th / 2 - 0.09);
+          backBorder.position.set(cx, 0.42, sofaBackZ - 0.09);
           g.add(backBorder);
-          // Back cushion (couch color)
-          const backCush = new THREE.Mesh(
-            new THREE.BoxGeometry(cushW, 0.26, 0.14),
-            fab
-          );
-          backCush.position.set(cx, 0.42, th / 2 - 0.09);
+          const backCush = new THREE.Mesh(new THREE.BoxGeometry(cushW, 0.26, 0.14), fab);
+          backCush.position.set(cx, 0.42, sofaBackZ - 0.09);
           backCush.castShadow = true; backCush.receiveShadow = true;
           g.add(backCush);
         }
 
-        // ── Back frame (behind cushions) ──
-        add(new THREE.BoxGeometry(tw, 0.35, 0.08), fabDark, 0.42).position.z = th / 2 - 0.02;
+        // ── Back frame ──
+        const backFrame = new THREE.Mesh(new THREE.BoxGeometry(tw, 0.35, 0.08), fabDark);
+        backFrame.position.set(0, 0.42, sofaBackZ - 0.02);
+        g.add(backFrame);
 
-        // ── Arms — thick, padded, rounded tops (Ciello-style) ──
-        for (const side of [-1, 1]) {
-          const ax = side * (tw / 2 - armW / 2);
-          // Arm body (same color as couch fabric, darker border outline)
-          const armBorder = new THREE.Mesh(
-            new THREE.BoxGeometry(armW + 0.008, 0.25 + 0.008, th + 0.008),
-            fabDark
-          );
-          armBorder.position.set(ax, 0.33, 0);
-          g.add(armBorder);
-          const arm = new THREE.Mesh(
-            new THREE.BoxGeometry(armW, 0.25, th),
-            fab
-          );
-          arm.position.set(ax, 0.33, 0);
-          arm.castShadow = true; arm.receiveShadow = true;
-          g.add(arm);
-          // Rounded arm top
-          const armTop = new THREE.Mesh(
-            new THREE.CylinderGeometry(armW / 2 - 0.01, armW / 2, th, 8),
-            fab
-          );
-          armTop.rotation.x = Math.PI / 2;
-          armTop.position.set(ax, 0.46, 0);
-          armTop.castShadow = true;
-          g.add(armTop);
-        }
+        // ── Chaise lounge extension on -X side (couch's left when facing -Z) ──
+        // Flat ottoman-like surface, no ledge/bumper
+        const chaiseW = cushW + armW; // width = one cushion + one arm
+        const chaiseD = th - sofaD; // remaining depth toward front
+        const chaiseX = -(tw / 2 - chaiseW / 2); // flush with -X edge
+        const chaiseCenterZ = sofaCenterZ - sofaD / 2 - chaiseD / 2;
+
+        // Chaise base/frame (dark, matching sofa base)
+        const chaiseBase = new THREE.Mesh(
+          new THREE.BoxGeometry(chaiseW, 0.10, chaiseD), fabDark
+        );
+        chaiseBase.position.set(chaiseX, 0.20, chaiseCenterZ);
+        g.add(chaiseBase);
+
+        // Chaise cushion — single flat pad (same color as couch)
+        const chaiseCush = new THREE.Mesh(
+          new THREE.BoxGeometry(chaiseW - 0.02, cushH, chaiseD - 0.02), fab
+        );
+        chaiseCush.position.set(chaiseX, 0.27, chaiseCenterZ);
+        chaiseCush.castShadow = true; chaiseCush.receiveShadow = true;
+        g.add(chaiseCush);
+
+        // ── Arms ──
+        // Left arm (-X side) — sofa depth only, no armrest along chaise
+        const leftArmX = -(tw / 2 - armW / 2);
+        const leftArmBorder = new THREE.Mesh(
+          new THREE.BoxGeometry(armW + 0.008, 0.35 + 0.008, sofaD + 0.008), fabDark
+        );
+        leftArmBorder.position.set(leftArmX, 0.38, sofaCenterZ);
+        g.add(leftArmBorder);
+        const leftArm = new THREE.Mesh(new THREE.BoxGeometry(armW, 0.35, sofaD), fab);
+        leftArm.position.set(leftArmX, 0.38, sofaCenterZ);
+        leftArm.castShadow = true; leftArm.receiveShadow = true;
+        g.add(leftArm);
+
+        // Right arm (+X side, sofa depth only)
+        const rightArmX = tw / 2 - armW / 2;
+        const rightArmBorder = new THREE.Mesh(
+          new THREE.BoxGeometry(armW + 0.008, 0.35 + 0.008, sofaD + 0.008), fabDark
+        );
+        rightArmBorder.position.set(rightArmX, 0.38, sofaCenterZ);
+        g.add(rightArmBorder);
+        const rightArm = new THREE.Mesh(new THREE.BoxGeometry(armW, 0.35, sofaD), fab);
+        rightArm.position.set(rightArmX, 0.38, sofaCenterZ);
+        rightArm.castShadow = true; rightArm.receiveShadow = true;
+        g.add(rightArm);
+
         break;
       }
       case "chaiseLounge": {
@@ -1844,14 +1948,14 @@ export class Game {
       }
       case "coffeeTable": {
         const col = f.col;
-        add(new THREE.BoxGeometry(tw + 0.06, 0.04, th + 0.06), std(col, 0.6), 0.2);
-        leg(-tw / 2 + 0.05, -th / 2 + 0.05, 0.18, col);
-        leg( tw / 2 - 0.05, -th / 2 + 0.05, 0.18, col);
-        leg(-tw / 2 + 0.05,  th / 2 - 0.05, 0.18, col);
-        leg( tw / 2 - 0.05,  th / 2 - 0.05, 0.18, col);
+        add(new THREE.BoxGeometry(tw + 0.06, 0.04, th + 0.06), std(col, 0.6), 0.28);
+        leg(-tw / 2 + 0.05, -th / 2 + 0.05, 0.26, col);
+        leg( tw / 2 - 0.05, -th / 2 + 0.05, 0.26, col);
+        leg(-tw / 2 + 0.05,  th / 2 - 0.05, 0.26, col);
+        leg( tw / 2 - 0.05,  th / 2 - 0.05, 0.26, col);
         // Magazine on top
         const mag = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.01, 0.16), std("#DD6644", 0.8));
-        mag.position.set(0.04, 0.23, -0.02); mag.rotation.y = 0.3;
+        mag.position.set(0.04, 0.31, -0.02); mag.rotation.y = 0.3;
         g.add(mag);
         break;
       }
@@ -2810,6 +2914,63 @@ export class Game {
         g.add(hook3);
         break;
       }
+      case "coffeeMaker": {
+        // Dark base box
+        add(new THREE.BoxGeometry(tw * 0.8, 0.25, th * 0.8), std("#333333", 0.7), 0.35);
+        // Glass carafe (transparent cylinder)
+        const carafe = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.08, 0.18, 8),
+          new THREE.MeshStandardMaterial({ color: "#886644", transparent: true, opacity: 0.4, roughness: 0.2 }),
+        );
+        carafe.position.set(0.05, 0.55, 0);
+        g.add(carafe);
+        // Water tank (back box)
+        add(new THREE.BoxGeometry(tw * 0.4, 0.35, th * 0.5), std("#222222", 0.8), 0.42).position.x = -0.06;
+        // Small button
+        const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.01, 6), std("#44AA44", 0.5));
+        btn.position.set(-0.06, 0.6, th * 0.3);
+        btn.rotation.x = Math.PI / 2;
+        g.add(btn);
+        break;
+      }
+      case "dogBowl": {
+        // Small shallow metallic bowl
+        const bowl = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.1, 0.06, 12),
+          std("#AAAAAA", 0.3, 0.4),
+        );
+        bowl.position.y = 0.03;
+        g.add(bowl);
+        // Inner rim
+        const inner = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.1, 0.08, 0.04, 12),
+          std("#888888", 0.3, 0.3),
+        );
+        inner.position.y = 0.05;
+        g.add(inner);
+        break;
+      }
+      case "smallTable": {
+        // Small round table
+        add(new THREE.CylinderGeometry(tw * 0.4, tw * 0.4, 0.04, 12), std(f.col, 0.6), 0.38);
+        // Single center leg
+        add(new THREE.CylinderGeometry(0.03, 0.04, 0.36, 6), std(f.col, 0.7), 0.18);
+        break;
+      }
+      case "sunroomChair": {
+        // Chaise lounge style (reuse chaiseLounge) — fallthrough
+        const seatH = 0.15;
+        const seatY = 0.22;
+        add(new THREE.BoxGeometry(tw, seatH, th), std(f.col, 0.7), seatY);
+        // Back rest (raised end)
+        add(new THREE.BoxGeometry(tw, 0.25, th * 0.3), std(f.col, 0.7), seatY + 0.2).position.z = -th * 0.35;
+        // Legs
+        leg(-tw / 2 + 0.06, -th / 2 + 0.06, seatY - seatH / 2, f.col);
+        leg( tw / 2 - 0.06, -th / 2 + 0.06, seatY - seatH / 2, f.col);
+        leg(-tw / 2 + 0.06,  th / 2 - 0.06, seatY - seatH / 2, f.col);
+        leg( tw / 2 - 0.06,  th / 2 - 0.06, seatY - seatH / 2, f.col);
+        break;
+      }
       default: {
         // Generic fallback
         add(new THREE.BoxGeometry(tw, 0.45, th), new THREE.MeshToonMaterial({ color: f.col }), 0.23);
@@ -2866,6 +3027,7 @@ export class Game {
     const outfit = MOM_OUTFITS[lvl.scene];
     const g = new THREE.Group();
 
+    let meshTarget: THREE.Group = g; // changes to torso group after legs
     const addMesh = (
       geo: THREE.BufferGeometry,
       col: string,
@@ -2876,7 +3038,7 @@ export class Game {
       const m = new THREE.Mesh(geo, mat);
       m.position.y = y; m.rotation.x = rx;
       m.castShadow = true;
-      g.add(m);
+      meshTarget.add(m);
       return m;
     };
 
@@ -2887,37 +3049,48 @@ export class Game {
     const buildLeg = (xOff: number) => {
       const legGroup = new THREE.Group();
       legGroup.position.set(xOff, 0.30, 0);
-      // Thigh
-      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.28, 6), legMat);
-      thigh.position.y = -0.14;
+      // Thigh (longer for natural sitting)
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.32, 6), legMat);
+      thigh.position.y = -0.16;
       thigh.castShadow = true;
       legGroup.add(thigh);
       // Knee pivot (calf + shoe hang from here)
       const knee = new THREE.Group();
-      knee.position.y = -0.28;
-      const calf = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.28, 6), legMat);
-      calf.position.y = -0.14;
+      knee.position.y = -0.32;
+      const calf = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.32, 6), legMat);
+      calf.position.y = -0.16;
       calf.castShadow = true;
       knee.add(calf);
       const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), shoeMat);
-      shoe.position.set(0, -0.27, 0.01);
+      shoe.position.set(0, -0.31, 0.01);
       knee.add(shoe);
       legGroup.add(knee);
       g.add(legGroup);
       return { legGroup, knee };
     };
 
-    const leftResult = buildLeg(-0.07);
-    this.momLeftLeg = leftResult.legGroup;
-    this.momLeftCalf = leftResult.knee;
+    const negXLeg = buildLeg(-0.07);  // -X = character's right when facing +Z
+    this.momRightLeg = negXLeg.legGroup;
+    this.momRightCalf = negXLeg.knee;
 
-    const rightResult = buildLeg(0.07);
-    this.momRightLeg = rightResult.legGroup;
-    this.momRightCalf = rightResult.knee;
+    const posXLeg = buildLeg(0.07);   // +X = character's left when facing +Z
+    this.momLeftLeg = posXLeg.legGroup;
+    this.momLeftCalf = posXLeg.knee;
+
+    // ── Torso group: pivots at waist (y=0.30) so lean-back rotates around hips ──
+    const torso = new THREE.Group();
+    torso.position.y = 0.30; // pivot at waist/hip joint
+    g.add(torso);
+    this.momTorso = torso;
+    // Inner group offsets by -0.30 so all child positions stay in absolute coords
+    const torsoInner = new THREE.Group();
+    torsoInner.position.y = -0.30;
+    torso.add(torsoInner);
+    meshTarget = torsoInner; // addMesh now adds to torsoInner
 
     // Hips / waist connector
     addMesh(new THREE.CylinderGeometry(0.13, 0.14, 0.12, 8), outfit.pantsColor, 0.36);
-    this.momLower = leftResult.legGroup; // keep for backward compat
+    this.momLower = negXLeg.legGroup; // keep for backward compat
 
     // Top — shape varies
     let headY = 0.92;
@@ -2942,29 +3115,36 @@ export class Game {
     const armMat = new THREE.MeshToonMaterial({ color: outfit.topColor });
     const skinMat = new THREE.MeshToonMaterial({ color: "#F5D0B0" });
 
-    const leftArm = new THREE.Group();
-    const upperArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.2, 5), armMat);
-    upperArmL.position.y = -0.1;
-    leftArm.add(upperArmL);
-    const foreArmL = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
-    foreArmL.position.y = -0.22;
-    leftArm.add(foreArmL);
-    leftArm.position.set(-0.23, shoulderY, 0);
-    leftArm.castShadow = true;
-    g.add(leftArm);
-    this.momLeftArm = leftArm;
+    // Arm at -X = character's right when facing +Z
+    const negXArm = new THREE.Group();
+    const upperArmNX = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.2, 5), armMat);
+    upperArmNX.position.y = -0.1;
+    negXArm.add(upperArmNX);
+    const foreArmNX = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
+    foreArmNX.position.y = -0.22;
+    negXArm.add(foreArmNX);
+    negXArm.position.set(-0.23, shoulderY, 0);
+    negXArm.castShadow = true;
+    torsoInner.add(negXArm);
+    this.momRightArm = negXArm;
 
-    const rightArm = new THREE.Group();
-    const upperArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.2, 5), armMat);
-    upperArmR.position.y = -0.1;
-    rightArm.add(upperArmR);
-    const foreArmR = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
-    foreArmR.position.y = -0.22;
-    rightArm.add(foreArmR);
-    rightArm.position.set(0.23, shoulderY, 0);
-    rightArm.castShadow = true;
-    g.add(rightArm);
-    this.momRightArm = rightArm;
+    // Arm at +X = character's left when facing +Z (has elbow IK joint for wine glass)
+    const posXArm = new THREE.Group();
+    const upperArmPX = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.2, 5), armMat);
+    upperArmPX.position.y = -0.1;
+    posXArm.add(upperArmPX);
+    // Elbow joint for IK
+    const elbowL = new THREE.Group();
+    elbowL.position.y = -0.2;
+    posXArm.add(elbowL);
+    const foreArmPX = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.028, 0.12, 5), skinMat);
+    foreArmPX.position.y = -0.02;
+    elbowL.add(foreArmPX);
+    posXArm.position.set(0.23, shoulderY, 0);
+    posXArm.castShadow = true;
+    torsoInner.add(posXArm);
+    this.momLeftArm = posXArm;
+    this.momLeftElbow = elbowL;
 
     // Head
     const head = addMesh(new THREE.SphereGeometry(0.13, 8, 8), "#F5D0B0", headY);
@@ -3168,6 +3348,14 @@ export class Game {
         lured: false, lureTarget: null, lureTimer: 0,
         lastBubbleChange: 0, bubbleTextIdx: 0,
       };
+      // Hide detection visuals for friendly dogs
+      if (def?.friendly) {
+        circ.visible = false;
+        pulse.visible = false;
+        zGroup.visible = false;
+        dogTbGroup.visible = false;
+      }
+
       this.npcs.push(npc);
       return npc;
 
@@ -3512,14 +3700,20 @@ export class Game {
 
   private animate = () => {
     this.animId = requestAnimationFrame(this.animate);
-    const dt = Math.min(this.clock.getDelta(), 1 / 30);
+    const rawDt = Math.min(this.clock.getDelta(), 1 / 30);
+    const dt = rawDt * this.animSpeed;
     this.frame++;
 
     // Animate outdoor objects (always, regardless of game state)
     this.updateOutdoor(dt);
 
     if (this.caught) {
-      if (this.dogCaughtAnim) this.updateDogCaughtAnim(dt);
+      if (this.dogCaughtAnim) {
+        this.updateDogCaughtAnim(dt);
+        if (this.animDebugEnabled) this.animDebug = `DOG-CAUGHT t=${this.dogCaughtAnim.elapsed.toFixed(2)}s`;
+      } else if (this.animDebugEnabled) {
+        this.animDebug = "CAUGHT (waiting for screen transition)";
+      }
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -3545,6 +3739,11 @@ export class Game {
           this.relaxZoomCallback?.();
           this.callbacks.onWon(this.level.winText);
         }
+      }
+
+      if (this.animDebugEnabled && this.relaxZoomPhase) {
+        const rzT = Math.min(this.relaxZoomElapsed / INTRO_ZOOM_SECS, 1);
+        this.animDebug = `RELAX-ZOOM t=${rzT.toFixed(2)} | frust=${this.frust.toFixed(2)}`;
       }
 
       // ── 3D relax scene updates ──
@@ -3577,6 +3776,10 @@ export class Game {
           this.introCompleteCallback?.();
         }
       }
+      if (this.animDebugEnabled) {
+        const zT = this.introElapsed > INTRO_HOLD_SECS ? Math.min((this.introElapsed - INTRO_HOLD_SECS) / INTRO_ZOOM_SECS, 1) : 0;
+        this.animDebug = `INTRO ${this.introElapsed <= INTRO_HOLD_SECS ? "hold" : "zoom-out"} | elapsed=${this.introElapsed.toFixed(2)}s | zoomT=${zT.toFixed(2)} | frust=${this.frust.toFixed(2)}`;
+      }
       // Goal ring pulse still runs during intro
       const s = 1 + Math.sin(this.frame * 0.05) * 0.15;
       this.goalRing.scale.set(s, s, 1);
@@ -3588,6 +3791,7 @@ export class Game {
     this.checkTraps();
     this.updateNpcs(dt);
     this.checkDetection();
+    this.updateTasks(dt);
     this.checkGoal();
 
     // Goal ring pulse
@@ -3638,7 +3842,7 @@ export class Game {
   private updateMom(dt: number) {
     if (!this.momPath || this.momPathIdx >= this.momPath.length) {
       // Idle — reset limbs and add gentle sway
-      // Gentle idle sway — use offset from base, not cumulative +=
+      if (this.animDebugEnabled) this.animDebug = `MOM idle | pos=(${this.momPos.x.toFixed(1)}, ${this.momPos.z.toFixed(1)}) | rotY=${this.mom.rotation.y.toFixed(2)}`;
       if (this.momHead) this.momHead.position.y = this.momHeadBaseY + Math.sin(this.frame * 0.015) * 0.0005;
       if (this.momLeftLeg) this.momLeftLeg.rotation.x *= 0.9;
       if (this.momRightLeg) this.momRightLeg.rotation.x *= 0.9;
@@ -3679,8 +3883,13 @@ export class Game {
     if (this.momHead) this.momHead.position.y += Math.sin(f * 0.5) * 0.001;
 
     if (f % 8 === 0) AudioManager.play("footstep-soft");
+    if (this.animDebugEnabled) this.animDebug = `MOM walking | pos=(${this.momPos.x.toFixed(1)}, ${this.momPos.z.toFixed(1)}) | target=(${target.x}, ${target.z}) | pathIdx=${this.momPathIdx}/${this.momPath.length} | swing=${swing.toFixed(2)} | rotY=${this.mom.rotation.y.toFixed(2)}`;
 
-    // Proximity detection for decoy pickups
+    // Proximity detection for decoy pickups (skip in task mode — tasks have their own proximity)
+    if (this.level.levelMode === "tasks") {
+      this.callbacks.onNearPickup(null);
+      return;
+    }
     let nearestPickup: string | null = null;
     for (const fg of this.furnitureGroups) {
       if (!fg.userData.hasDecoy) continue;
@@ -3723,6 +3932,9 @@ export class Game {
   private updateNpcs(dt: number) {
     for (const npc of this.npcs) {
       if (npc.type === "dog") {
+        // Skip normal dog AI for friendly dogs (handled by updateFriendlyDog)
+        const npcDef = this.level.npcs.find(n => n.type === "dog");
+        if (npcDef?.friendly) continue;
         // Pulse animation
         if (npc.pulse) {
           const sc = 1 + Math.sin(this.frame * 0.04) * 0.15;
@@ -3887,10 +4099,18 @@ export class Game {
         }
       }
     }
+    if (this.animDebugEnabled && this.npcs.length > 0) {
+      const parts = this.npcs.map(n => {
+        const state = n.lured ? "lured" : n.patrolIdx !== undefined ? `patrol[${n.patrolIdx}]` : "idle";
+        return `${n.type}(${n.pos.x.toFixed(1)},${n.pos.z.toFixed(1)} ${state})`;
+      });
+      this.animDebug = `NPCs: ${parts.join(" | ")}`;
+    }
   }
 
   private checkDetection() {
     if (this.caught) return;
+    if (this.level.levelMode === "tasks") return; // no stealth detection in task mode
     const lvl = this.level;
 
     for (const npc of this.npcs) {
@@ -3923,6 +4143,311 @@ export class Game {
           }
         }
       }
+    }
+  }
+
+  // ── Task system (Level 6+) ──────────────────────────────────────────────────
+
+  private initTasks(lvl: LevelData) {
+    if (!lvl.tasks || lvl.levelMode !== "tasks") return;
+    for (const task of lvl.tasks) {
+      const status: TaskRuntimeStatus = task.requires.length === 0 && !task.autoComplete ? "available" : "locked";
+      this.taskStates.set(task.id, { def: task, status, timer: 0 });
+    }
+    // Auto-complete tasks with no requires and autoComplete > 0 start locked
+    // Tasks with no requires and no autoComplete start available
+    this.broadcastTaskStatuses();
+
+    // Build coffee timer ring above coffeeMaker
+    const coffeeFurn = lvl.furniture.find(f => f.label === "coffeeMaker");
+    if (coffeeFurn) {
+      const ringGeo = new THREE.RingGeometry(0.18, 0.22, 32, 1, 0, Math.PI * 2);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: "#44AA44", transparent: true, opacity: 0, side: THREE.DoubleSide,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      const fx = (coffeeFurn.x + coffeeFurn.w / 2 - 0.5 - this.cx) * TILE_SIZE;
+      const fz = (coffeeFurn.z + coffeeFurn.h / 2 - 0.5 - this.cz) * TILE_SIZE;
+      ring.position.set(fx, TILE_H + 0.8, fz);
+      this.scene.add(ring);
+      this.coffeeTimerRing = ring;
+      this.coffeeTimerRingMat = ringMat;
+    }
+  }
+
+  private broadcastTaskStatuses() {
+    const statuses: Record<string, TaskRuntimeStatus> = {};
+    for (const [id, ts] of this.taskStates) {
+      statuses[id] = ts.status;
+    }
+    this.callbacks.onTaskUpdate?.(statuses);
+  }
+
+  private updateTasks(dt: number) {
+    if (this.level.levelMode !== "tasks" || this.taskStates.size === 0) return;
+
+    // Update auto-complete timers
+    for (const [, ts] of this.taskStates) {
+      if (ts.status === "active" && ts.def.autoComplete > 0) {
+        ts.timer += dt;
+        if (ts.timer >= ts.def.autoComplete) {
+          ts.status = "done";
+          this.onTaskCompleted(ts.def);
+        }
+      }
+    }
+
+    // Update performing-task timer (duration-based tasks like crackEggs, fillBowl)
+    if (this.performingTask) {
+      this.performingTask.elapsed += dt;
+      if (this.performingTask.elapsed >= this.performingTask.duration) {
+        const ts = this.taskStates.get(this.performingTask.id);
+        if (ts) {
+          ts.status = "done";
+          this.onTaskCompleted(ts.def);
+        }
+        this.performingTask = null;
+      }
+    }
+
+    // Unlock tasks whose requires are all done
+    for (const [, ts] of this.taskStates) {
+      if (ts.status === "locked") {
+        const allReqDone = ts.def.requires.every(r => {
+          const req = this.taskStates.get(r);
+          return req && req.status === "done";
+        });
+        if (allReqDone) {
+          // For auto-complete tasks, start them immediately
+          if (ts.def.autoComplete > 0 && !ts.def.interactWith) {
+            ts.status = "active";
+            ts.timer = 0;
+          } else {
+            ts.status = "available";
+          }
+        }
+      }
+    }
+
+    // Special: getCoffee requires startCoffee + brew time
+    const getCoffee = this.taskStates.get("getCoffee");
+    if (getCoffee && getCoffee.status === "available" && !this.coffeeBrewDone) {
+      getCoffee.status = "locked"; // re-lock until brew completes
+    }
+
+    // Coffee brew timer
+    const startCoffee = this.taskStates.get("startCoffee");
+    if (startCoffee && startCoffee.status === "done" && !this.coffeeBrewDone) {
+      this.coffeeBrewTimer += dt;
+      const brewSecs = this.level.coffeeBrewSecs ?? 30;
+      if (this.coffeeBrewTimer >= brewSecs) {
+        this.coffeeBrewDone = true;
+        // Show steam on coffee maker
+        this.spawnSteam();
+        // Unlock getCoffee
+        if (getCoffee && getCoffee.status === "locked") {
+          getCoffee.status = "available";
+        }
+      }
+      // Update ring to show brew progress
+      if (this.coffeeTimerRing && this.coffeeTimerRingMat) {
+        this.coffeeTimerRingMat.opacity = 0.6;
+        this.coffeeTimerRingMat.color.set("#4488FF");
+        const frac = Math.min(this.coffeeBrewTimer / brewSecs, 1);
+        const newGeo = new THREE.RingGeometry(0.18, 0.22, 32, 1, 0, Math.PI * 2 * frac);
+        this.coffeeTimerRing.geometry.dispose();
+        this.coffeeTimerRing.geometry = newGeo;
+      }
+    }
+
+    // Coffee cold timer (starts when brew is done)
+    if (this.coffeeBrewDone && !this.won) {
+      if (!this.coffeeColdStarted) {
+        this.coffeeColdStarted = true;
+        this.coffeeColdTimer = 0;
+      }
+      this.coffeeColdTimer += dt;
+      const coldSecs = this.level.coffeeColdSecs ?? 60;
+      const fraction = Math.max(0, 1 - this.coffeeColdTimer / coldSecs);
+      this.callbacks.onCoffeeTimer?.(fraction);
+
+      // Update ring color: green → yellow → red
+      if (this.coffeeTimerRing && this.coffeeTimerRingMat) {
+        this.coffeeTimerRingMat.opacity = 0.7;
+        const newGeo = new THREE.RingGeometry(0.18, 0.22, 32, 1, 0, Math.PI * 2 * fraction);
+        this.coffeeTimerRing.geometry.dispose();
+        this.coffeeTimerRing.geometry = newGeo;
+        if (fraction > 0.5) {
+          this.coffeeTimerRingMat.color.set("#44AA44");
+        } else if (fraction > 0.25) {
+          this.coffeeTimerRingMat.color.set("#CCAA00");
+        } else {
+          this.coffeeTimerRingMat.color.set("#CC3333");
+        }
+      }
+
+      // Coffee got cold → fail
+      if (this.coffeeColdTimer >= coldSecs && !this.caught) {
+        this.caught = true;
+        setTimeout(() => {
+          this.callbacks.onCaught(pickRandom(this.level.caughtLines));
+        }, CAUGHT_DELAY_MS);
+      }
+    }
+
+    // Update steam particles
+    for (const p of this.steamParticles) {
+      p.position.y += dt * 0.15;
+      (p.material as THREE.MeshBasicMaterial).opacity -= dt * 0.3;
+      if ((p.material as THREE.MeshBasicMaterial).opacity <= 0) {
+        // Reset
+        p.position.y = TILE_H + 0.5;
+        (p.material as THREE.MeshBasicMaterial).opacity = 0.4;
+      }
+    }
+
+    // Proximity detection for available tasks
+    let nearestTask: string | null = null;
+    if (!this.performingTask) {
+      for (const [id, ts] of this.taskStates) {
+        if (ts.status !== "available") continue;
+        if (!ts.def.interactWith) continue;
+        // Check if requiring an item we don't have
+        if (ts.def.requiresItem && this.taskItem !== ts.def.requiresItem) continue;
+        const furn = this.level.furniture.find(f => f.label === ts.def.interactWith);
+        if (!furn) continue;
+        const fx = furn.x + furn.w / 2 - 0.5;
+        const fz = furn.z + furn.h / 2 - 0.5;
+        if (dist2d(this.momPos.x, this.momPos.z, fx, fz) < TASK_INTERACT_RANGE) {
+          nearestTask = id;
+          break;
+        }
+      }
+    }
+    this.callbacks.onNearTask?.(nearestTask);
+
+    // Update friendly dog AI
+    this.updateFriendlyDog(dt);
+
+    this.broadcastTaskStatuses();
+  }
+
+  private onTaskCompleted(def: TaskDef) {
+    // Give item
+    if (def.givesItem) {
+      this.taskItem = def.givesItem;
+      this.callbacks.onTaskItem?.(this.taskItem);
+    }
+    // Consume item
+    if (def.requiresItem) {
+      this.taskItem = null;
+      this.callbacks.onTaskItem?.(null);
+    }
+    // Special: fillBowl triggers dog eating
+    if (def.id === "fillBowl") {
+      this.dogAIState = "eating";
+      this.dogAITimer = 0;
+    }
+    // Special: letDogOut triggers dog exiting
+    if (def.id === "letDogOut") {
+      this.dogAIState = "exiting";
+      this.dogAITimer = 0;
+    }
+    // Special: drinkCoffee = win!
+    if (def.id === "drinkCoffee") {
+      this.triggerWin();
+    }
+  }
+
+  /** Called from HUD when player taps the action button for a task */
+  performTask(taskId: string) {
+    const ts = this.taskStates.get(taskId);
+    if (!ts || ts.status !== "available") return;
+    const def = ts.def;
+
+    if (def.duration > 0) {
+      // Start a timed interaction
+      this.performingTask = { id: taskId, elapsed: 0, duration: def.duration };
+      ts.status = "active";
+    } else {
+      // Instant completion
+      ts.status = "done";
+      this.onTaskCompleted(def);
+    }
+  }
+
+  private spawnSteam() {
+    const coffeeFurn = this.level.furniture.find(f => f.label === "coffeeMaker");
+    if (!coffeeFurn) return;
+    const fx = (coffeeFurn.x + coffeeFurn.w / 2 - 0.5 - this.cx) * TILE_SIZE;
+    const fz = (coffeeFurn.z + coffeeFurn.h / 2 - 0.5 - this.cz) * TILE_SIZE;
+    for (let i = 0; i < 3; i++) {
+      const geo = new THREE.SphereGeometry(0.04, 6, 6);
+      const mat = new THREE.MeshBasicMaterial({ color: "#FFFFFF", transparent: true, opacity: 0.4 });
+      const p = new THREE.Mesh(geo, mat);
+      p.position.set(fx + (i - 1) * 0.05, TILE_H + 0.5 + i * 0.1, fz);
+      this.scene.add(p);
+      this.steamParticles.push(p);
+    }
+  }
+
+  private updateFriendlyDog(dt: number) {
+    // Find the friendly dog NPC
+    const dogNpc = this.npcs.find(n => n.type === "dog");
+    if (!dogNpc) return;
+    const friendlyDef = this.level.npcs.find(n => n.type === "dog" && n.friendly);
+    if (!friendlyDef) return;
+
+    this.dogAITimer += dt;
+
+    switch (this.dogAIState) {
+      case "idle": {
+        // Tail wag: slight rotation oscillation
+        dogNpc.group.rotation.y = Math.sin(this.frame * 0.08) * 0.15;
+        break;
+      }
+      case "eating": {
+        // Head bob animation
+        dogNpc.group.rotation.x = Math.sin(this.dogAITimer * 6) * 0.1;
+        // Hide detection visuals
+        if (dogNpc.circ) dogNpc.circ.visible = false;
+        if (dogNpc.pulse) dogNpc.pulse.visible = false;
+        break;
+      }
+      case "done": {
+        // Sit and wag
+        dogNpc.group.rotation.y = Math.sin(this.frame * 0.08) * 0.15;
+        dogNpc.group.rotation.x = 0;
+        break;
+      }
+      case "exiting": {
+        // Walk toward backyard door and disappear
+        const doorFurn = this.level.furniture.find(f => f.label === "backyardDoor");
+        if (doorFurn) {
+          const tx = (doorFurn.x + doorFurn.w / 2 - 0.5 - this.cx) * TILE_SIZE;
+          const tz = (doorFurn.z + doorFurn.h / 2 - 0.5 - this.cz) * TILE_SIZE;
+          const dx = tx - dogNpc.group.position.x;
+          const dz = tz - dogNpc.group.position.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist > 0.05) {
+            const speed = 1.5 * TILE_SIZE;
+            dogNpc.group.position.x += (dx / dist) * speed * dt;
+            dogNpc.group.position.z += (dz / dist) * speed * dt;
+            dogNpc.group.rotation.y = Math.atan2(dx, dz);
+          } else {
+            dogNpc.group.visible = false;
+            this.dogAIState = "done"; // no more updates needed
+          }
+        }
+        break;
+      }
+    }
+
+    // Transition eating→done after dogEat task completes
+    const dogEat = this.taskStates.get("dogEat");
+    if (dogEat && dogEat.status === "done" && this.dogAIState === "eating") {
+      this.dogAIState = "done";
     }
   }
 
@@ -4025,67 +4550,76 @@ export class Game {
         }
         break;
       }
-      // ── Phase 2: Turn toward TV and squat down onto couch ──
+      // ── Phase 2: Turn toward TV, then sit down by bending knees (no sliding into couch) ──
       case 2: {
         const seat = this.relaxSeatPos;
         const from = this.relaxWaypoints[1];
         if (seat && from) {
-          // Slide from gap northward onto couch seat
+          // Stay at standing X, move Z only slightly back to couch front edge
           this.mom.position.x = lerp(from.x, seat.x, t);
-          this.mom.position.z = lerp(from.z, seat.z, t);
-          // Turn to face TV (+Z direction, rotation.y = 0)
-          this.mom.rotation.y = lerp(this.relaxStartRotY, 0, Math.min(t * 2, 1));
-          // Squat arc: dip below standing height in first half,
-          // then rise to seat height in second half — never into the couch
-          const squat = Math.sin(t * Math.PI) * 0.06; // mid-squat dip
-          this.mom.position.y = lerp(from.y, seat.y, t) - squat * (1 - t);
+          this.mom.position.z = lerp(from.z, seat.z, easeInOutQuad(t));
+          // Turn to face TV (+Z direction, rotation.y = 0) in first 40%
+          const turnT = Math.min(t / 0.4, 1);
+          this.mom.rotation.y = lerp(this.relaxStartRotY, 0, easeOutQuad(turnT));
+          // Lower hips to seat height — starts after 20%, smooth descent
+          const sitT = Math.max(0, (t - 0.2) / 0.8);
+          this.mom.position.y = lerp(from.y, seat.y, easeInOutQuad(sitT));
           // Thighs rotate to horizontal (pointing forward, +Z)
-          const thighAngle = lerp(0, -Math.PI / 2, t);
+          const thighAngle = lerp(0, -Math.PI / 2, easeInOutQuad(sitT));
           if (this.momLeftLeg) this.momLeftLeg.rotation.x = thighAngle;
           if (this.momRightLeg) this.momRightLeg.rotation.x = thighAngle;
           // Calves bend at knee to hang vertical
-          const calfAngle = lerp(0, Math.PI / 2, t);
+          const calfAngle = lerp(0, Math.PI / 2, easeInOutQuad(sitT));
           if (this.momLeftCalf) this.momLeftCalf.rotation.x = calfAngle;
           if (this.momRightCalf) this.momRightCalf.rotation.x = calfAngle;
-          // Torso stays vertical — no lean
-          this.mom.rotation.x = 0;
+          // Torso stays vertical during sit-down
+          if (this.momTorso) this.momTorso.rotation.x = 0;
         }
         break;
       }
-      // ── Phase 3: Head tilts slightly backward (leaning on back cushion) ──
+      // ── Phase 3: Lean torso back ──
       case 3: {
-        if (this.momHead) this.momHead.rotation.x = lerp(0, 0.15, t);
+        if (this.momTorso) this.momTorso.rotation.x = lerp(0, -0.485, easeOutQuad(t));
         break;
       }
-      // ── Phase 4: Both calves extend, angled slightly forward so ankles reach table ──
+      // ── Phase 4: Calves extend straight onto chaise lounge ──
       case 4: {
-        if (this.momLeftCalf)  this.momLeftCalf.rotation.x  = lerp(Math.PI / 2, -0.3, t);
-        if (this.momRightCalf) this.momRightCalf.rotation.x = lerp(Math.PI / 2, -0.3, t);
+        if (this.momLeftCalf)  this.momLeftCalf.rotation.x  = lerp(Math.PI / 2, 0, t);
+        if (this.momRightCalf) this.momRightCalf.rotation.x = lerp(Math.PI / 2, 0, t);
         break;
       }
       // ── Phase 5: Right leg crosses over left at ankle ──
       case 5: {
         if (this.momRightLeg) {
-          // Cross right leg over left: rotate z inward (to the left)
-          this.momRightLeg.rotation.z = lerp(0, -0.35, t);
+          // Right leg at -X; rotate z positive to cross inward toward +X (over left leg)
+          this.momRightLeg.rotation.z = lerp(0, 0.35, t);
           // Raise right leg slightly so ankle clears left
           this.momRightLeg.rotation.x = lerp(-Math.PI / 2, -Math.PI / 2 - 0.12, t);
         }
         break;
       }
-      // ── Phase 6: Arms drape over armrests ──
+      // ── Phase 6: Arms drape — left arm rests on armrest, right arm on lap ──
       case 6: {
         if (this.momLeftArm) {
-          this.momLeftArm.rotation.z = lerp(0, 0.9, t);
-          this.momLeftArm.rotation.x = lerp(0, 0.2, t);
+          // Left arm at +X; rotation.z > 0 extends further out toward armrest/side table
+          this.momLeftArm.rotation.z = lerp(0, 1.1, t);
+          this.momLeftArm.rotation.x = lerp(0, -0.5, t); // forward for isometric visibility
+        }
+        if (this.momLeftElbow) {
+          // Forearm bends at elbow to point straight along armrest (not dangling)
+          this.momLeftElbow.rotation.z = lerp(0, -1.1, t);
         }
         if (this.momRightArm) {
-          this.momRightArm.rotation.z = lerp(0, -0.9, t);
-          this.momRightArm.rotation.x = lerp(0, 0.2, t);
+          // Right arm at -X; rotation.z > 0 brings it inward toward center/lap
+          this.momRightArm.rotation.z = lerp(0, 0.7, t);
+          this.momRightArm.rotation.x = lerp(0, -0.4, t); // forward onto lap
         }
         break;
       }
     }
+
+    const phaseNames = ["Walk step 1", "Walk step 2", "Turn & sit", "Head settle", "Calves extend to table", "Cross legs", "Arms drape"];
+    if (this.animDebugEnabled) this.animDebug = `SIT phase=${this.relaxPhase} "${phaseNames[this.relaxPhase] ?? "?"}" t=${this.relaxPhaseT.toFixed(2)} | momPos=(${this.mom.position.x.toFixed(2)}, ${this.mom.position.y.toFixed(2)}, ${this.mom.position.z.toFixed(2)}) | rotY=${this.mom.rotation.y.toFixed(2)}`;
 
     // Advance to next phase when current completes
     if (this.relaxPhaseT >= 1) {
@@ -4121,141 +4655,238 @@ export class Game {
     const t = Math.min(anim.elapsed / anim.duration, 1);
     const eased = easeOutQuad(t);
 
+    if (this.animDebugEnabled) {
+      const armRx = this.momRightArm?.rotation.x ?? 0;
+      const armRz = this.momRightArm?.rotation.z ?? 0;
+      const lArmRx = this.momLeftArm?.rotation.x ?? 0;
+      const lArmRz = this.momLeftArm?.rotation.z ?? 0;
+      this.animDebug = `${anim.type.toUpperCase()} t=${t.toFixed(2)} | R-arm rx=${armRx.toFixed(2)} rz=${armRz.toFixed(2)} | L-arm rx=${lArmRx.toFixed(2)} rz=${lArmRz.toFixed(2)} | headRx=${this.momHead?.rotation.x.toFixed(2) ?? "?"} | tilt=${this.wineGlassTilt.toFixed(2)} | fill=${this.wineLiquidFill.toFixed(2)}`;
+    }
+
     switch (anim.type) {
       case "cheese-reach": {
-        // Right arm reaches forward toward coffee table
+        // Right arm (at -X) reaches down toward cheese tray on couch seat
         if (this.momRightArm) {
-          this.momRightArm.rotation.x = lerp(0.4, -1.0, eased);
-          this.momRightArm.rotation.z = lerp(-0.6, -0.1, eased);
+          this.momRightArm.rotation.x = lerp(-0.4, -0.6, eased);
+          this.momRightArm.rotation.z = lerp(0.7, 0.2, eased);
         }
         if (t >= 1) {
-          // Grab the cheese piece — hide it
+          // Grab the cheese piece — hide it from tray
           if (anim.target) {
             anim.target.visible = false;
-            // Remove from clickables
             const idx = this.relaxClickables.indexOf(anim.target);
             if (idx >= 0) this.relaxClickables.splice(idx, 1);
             const pidx = this.relaxCheesePieces.indexOf(anim.target);
             if (pidx >= 0) this.relaxCheesePieces.splice(pidx, 1);
           }
-          this.relaxAnim = { type: "cheese-eat", elapsed: 0, duration: 0.6 };
+          // Attach visible cheese wedge to right arm (at wrist)
+          if (this.momRightArm) {
+            const cheese = new THREE.Mesh(
+              new THREE.BoxGeometry(0.04, 0.025, 0.035),
+              new THREE.MeshStandardMaterial({ color: "#F0D050", roughness: 0.6 })
+            );
+            cheese.position.set(0, -0.30, 0);
+            this.momRightArm.add(cheese);
+            this.relaxCheeseInHand = cheese;
+          }
+          this.relaxAnim = { type: "cheese-eat", elapsed: 0, duration: 0.8 };
         }
         break;
       }
       case "cheese-eat": {
-        // Bring arm up to mouth
+        // Bring arm up to mouth with cheese visible in hand
         if (this.momRightArm) {
-          this.momRightArm.rotation.x = lerp(-1.0, -0.3, eased);
-          this.momRightArm.rotation.z = lerp(-0.1, -0.15, eased);
+          this.momRightArm.rotation.x = lerp(-0.6, -0.15, eased);
+          this.momRightArm.rotation.z = lerp(0.2, 0.15, eased);
         }
-        // Head tilts forward slightly to "eat"
-        if (this.momHead && t > 0.3 && t < 0.7) {
-          this.momHead.rotation.x = lerp(0.15, 0.05, (t - 0.3) / 0.4);
+        // Head tilts forward to eat
+        if (this.momHead) {
+          if (t > 0.3 && t < 0.7) {
+            this.momHead.rotation.x = lerp(0.15, 0.0, (t - 0.3) / 0.4);
+          } else if (t >= 0.7) {
+            this.momHead.rotation.x = lerp(0.0, 0.15, (t - 0.7) / 0.3);
+          }
         }
         if (t >= 1) {
-          this.relaxAnim = { type: "cheese-return", elapsed: 0, duration: 0.4 };
+          // Remove cheese from hand (eaten!)
+          if (this.relaxCheeseInHand && this.momRightArm) {
+            this.momRightArm.remove(this.relaxCheeseInHand);
+            this.relaxCheeseInHand = null;
+          }
+          this.relaxAnim = { type: "cheese-return", elapsed: 0, duration: 0.5 };
         }
         break;
       }
       case "cheese-return": {
-        // Return arm to resting position (phase 6 pose: x=0.2, z=-0.9)
+        // Return arm to resting position (phase 6 pose: x=-0.4, z=0.7)
         if (this.momRightArm) {
-          this.momRightArm.rotation.x = lerp(-0.3, 0.2, eased);
-          this.momRightArm.rotation.z = lerp(-0.15, -0.9, eased);
+          this.momRightArm.rotation.x = lerp(-0.15, -0.4, eased);
+          this.momRightArm.rotation.z = lerp(0.15, 0.7, eased);
         }
-        if (this.momHead) this.momHead.rotation.x = lerp(0.05, 0.15, eased);
+        if (this.momHead) this.momHead.rotation.x = lerp(0.15, 0.15, eased);
         if (t >= 1) {
           this.relaxAnim = { type: "idle", elapsed: 0, duration: 0 };
         }
         break;
       }
       case "wine-reach": {
-        // Left arm reaches to the side (toward side table)
-        // Resting pose from phase 6: x=0.2, z=0.9
-        if (this.momLeftArm) {
-          this.momLeftArm.rotation.x = lerp(0.2, -0.4, eased);
-          this.momLeftArm.rotation.z = lerp(0.9, 0.8, eased);
+        // IK-driven raise: wrist follows cubic Bezier from rest to mouth
+        const shoulderPos = this.momLeftArm?.position ?? new THREE.Vector3(-0.23, 0.70, 0);
+        const shoulderY = shoulderPos.y;
+
+        // Wrist positions in mom local space — Z well forward to stay clear of body
+        const restWrist = new THREE.Vector3(
+          shoulderPos.x + 0.40, shoulderY - 0.12, 0.28
+        ); // arm draped over armrest, well in front of body
+        const mouthTarget = new THREE.Vector3(0.0, shoulderY - 0.03, 0.22);
+
+        // Bezier control points for natural arc — stay on +X side and in front to avoid clipping body
+        const cp1 = new THREE.Vector3(
+          0.18, shoulderY + 0.02, 0.26
+        );
+        const cp2 = new THREE.Vector3(
+          0.14, shoulderY + 0.02, 0.24
+        );
+
+        const wristPos = this.cubicBezier(restWrist, cp1, cp2, mouthTarget, eased);
+        this.solveWineArmIK(wristPos);
+
+        if (t < 0.05 && this.relaxWineGlass && this.momLeftElbow) {
+          // Attach glass to elbow group (at wrist position)
+          this.momLeftElbow.add(this.relaxWineGlass);
+          this.relaxWineGlass.position.set(0, -0.10, 0);
         }
+
+        // Keep glass upright (cancel arm rotations)
+        this.updateWineGlassOrientation(0);
+        // Liquid stays full
+        this.wineLiquidFill = 1.0;
+        this.updateWineLiquidClip();
+
+        if (this.animDebugEnabled) this.animDebug = `WINE-REACH t=${t.toFixed(2)} | wrist=(${wristPos.x.toFixed(2)}, ${wristPos.y.toFixed(2)}, ${wristPos.z.toFixed(2)}) | rest=(${restWrist.x.toFixed(2)}, ${restWrist.y.toFixed(2)}, ${restWrist.z.toFixed(2)}) | mouth=(${mouthTarget.x.toFixed(2)}, ${mouthTarget.y.toFixed(2)}, ${mouthTarget.z.toFixed(2)}) | tilt=0 | fill=1.0`;
+
         if (t >= 1) {
-          // Attach wine glass below the forearm tip so it doesn't clip through the arm
-          if (this.relaxWineGlass && this.momLeftArm) {
-            this.momLeftArm.add(this.relaxWineGlass);
-            this.relaxWineGlass.position.set(0, -0.34, 0);
-            this.relaxWineGlass.rotation.set(0, 0, 0);
+          // Record base Y for stable liquid surface during tilt
+          if (this.relaxWineGlass) {
+            const gw = new THREE.Vector3();
+            this.relaxWineGlass.getWorldPosition(gw);
+            this.wineLiquidBaseY = gw.y;
           }
           this.relaxAnim = { type: "wine-drink", elapsed: 0, duration: 2.5 };
         }
         break;
       }
       case "wine-drink": {
-        // Phase 1 (0–0.35): raise arm toward mouth
-        // Phase 2 (0.35–0.6): glass tilts from vertical to horizontal (–π/2)
-        // Phase 3 (0.6–0.75): hold glass horizontal (drinking)
-        // Phase 4 (0.75–1.0): glass rotates back from horizontal to vertical
-        if (this.momLeftArm) {
-          if (t < 0.35) {
-            const subT = easeOutQuad(t / 0.35);
-            this.momLeftArm.rotation.x = lerp(-0.4, -2.0, subT);
-            this.momLeftArm.rotation.z = lerp(0.8, 0.15, subT);
-          } else {
-            this.momLeftArm.rotation.x = -2.0;
-            this.momLeftArm.rotation.z = 0.15;
-          }
+        // Glass tilts, liquid empties, then glass untilts at end
+        const shoulderPos2 = this.momLeftArm?.position ?? new THREE.Vector3(-0.23, 0.70, 0);
+        const mouthPos = new THREE.Vector3(0.0, shoulderPos2.y - 0.03, 0.22);
+        this.solveWineArmIK(mouthPos); // hold wrist at mouth
+
+        const maxTilt = 0.75; // ~43° toward mouth (positive = tilt toward -X into face)
+
+        let drinkPhase = "";
+        if (t < 0.15) {
+          // Phase A: tilt glass to drinking angle
+          this.wineGlassTilt = lerp(0, maxTilt, easeOutQuad(t / 0.15));
+          this.wineLiquidFill = 1.0;
+          drinkPhase = "A: tilt to drinking angle";
+        } else if (t < 0.80) {
+          // Phase B: hold tilt, liquid empties
+          this.wineGlassTilt = maxTilt;
+          this.wineLiquidFill = lerp(1.0, 0.0, (t - 0.15) / 0.65);
+          drinkPhase = "B: hold tilt, liquid empties";
+        } else {
+          // Phase C: hold tilt, liquid fully empty
+          this.wineGlassTilt = maxTilt;
+          this.wineLiquidFill = 0;
+          drinkPhase = "C: hold tilt, empty";
         }
-        // Glass: vertical → horizontal → hold → vertical (clean linear tilt, no sin bounce)
-        if (this.relaxWineGlass) {
-          if (t >= 0.35 && t < 0.6) {
-            // Tilt to horizontal
-            this.relaxWineGlass.rotation.x = lerp(0, -Math.PI / 2, easeOutQuad((t - 0.35) / 0.25));
-          } else if (t >= 0.6 && t < 0.75) {
-            // Hold horizontal
-            this.relaxWineGlass.rotation.x = -Math.PI / 2;
-          } else if (t >= 0.75) {
-            // Rotate back to vertical
-            this.relaxWineGlass.rotation.x = lerp(-Math.PI / 2, 0, easeOutQuad((t - 0.75) / 0.25));
-          } else {
-            this.relaxWineGlass.rotation.x = 0;
-          }
-          this.relaxWineGlass.rotation.y = 0;
-          this.relaxWineGlass.rotation.z = 0;
-        }
-        // Head tilts back while glass is horizontal
+
+        this.updateWineGlassOrientation(this.wineGlassTilt);
+        this.updateWineLiquidClip();
+
+        // Head tilts back while drinking
         if (this.momHead) {
-          if (t > 0.5 && t < 0.75) {
-            this.momHead.rotation.x = lerp(0.15, -0.1, (t - 0.5) / 0.25);
-          } else if (t >= 0.75 && t < 0.95) {
-            this.momHead.rotation.x = lerp(-0.1, 0.15, (t - 0.75) / 0.2);
+          if (t > 0.15 && t < 0.80) {
+            this.momHead.rotation.x = lerp(0.15, -0.1, (t - 0.15) / 0.65);
+          } else if (t >= 0.80) {
+            this.momHead.rotation.x = lerp(-0.1, 0.15, (t - 0.80) / 0.20);
           }
         }
+
+        if (this.animDebugEnabled) this.animDebug = `WINE-DRINK t=${t.toFixed(2)} | ${drinkPhase} | tilt=${this.wineGlassTilt.toFixed(2)} | fill=${this.wineLiquidFill.toFixed(2)} | headRx=${this.momHead?.rotation.x.toFixed(2) ?? "?"}`;
+
         if (t >= 1) {
-          // Glass is vertical — snap it back to the table NOW so arm returns cleanly with no glass
-          if (this.relaxWineGlass && this.relaxWineGlassOrigParent) {
-            this.relaxWineGlassOrigParent.add(this.relaxWineGlass);
-            this.relaxWineGlass.position.copy(this.relaxWineGlassOrigPos);
-            this.relaxWineGlass.quaternion.copy(this.relaxWineGlassOrigQuat);
-          }
           this.relaxAnim = { type: "wine-return", elapsed: 0, duration: 1.5 };
         }
         break;
       }
       case "wine-return": {
-        // Phase 1 (0–0.45): lower arm from mouth back down toward side-table level
-        // Phase 2 (0.45–1.0): arm sweeps back to armrest resting position
-        // Glass is already on the table — no glass handling needed here
-        if (t < 0.45) {
-          const subT = easeOutQuad(t / 0.45);
-          if (this.momLeftArm) {
-            this.momLeftArm.rotation.x = lerp(-2.0, -0.4, subT);
-            this.momLeftArm.rotation.z = lerp(0.15, 0.8, subT);
-          }
+        // IK-driven lowering along reversed Bezier arc
+        const shoulderPos3 = this.momLeftArm?.position ?? new THREE.Vector3(-0.23, 0.70, 0);
+        const sY = shoulderPos3.y;
+        const mouthStart = new THREE.Vector3(0.0, sY - 0.03, 0.22);
+        const restEnd = new THREE.Vector3(shoulderPos3.x + 0.40, sY - 0.12, 0.28);
+        const cp2r = new THREE.Vector3(0.14, sY + 0.02, 0.24);
+        const cp1r = new THREE.Vector3(0.18, sY + 0.02, 0.26);
+
+        const wristReturn = this.cubicBezier(mouthStart, cp2r, cp1r, restEnd, eased);
+        this.solveWineArmIK(wristReturn);
+
+        // Untilt glass in first 40% of return
+        let returnPhase = "";
+        if (t < 0.4) {
+          const maxTiltR = 0.75;
+          this.wineGlassTilt = lerp(maxTiltR, 0, easeOutQuad(t / 0.4));
+          returnPhase = "untilting glass";
+        } else if (t <= 0.7) {
+          this.wineGlassTilt = 0;
+          returnPhase = "lowering arm (IK)";
         } else {
-          const subT = easeOutQuad((t - 0.45) / 0.55);
-          if (this.momLeftArm) {
-            this.momLeftArm.rotation.x = lerp(-0.4, 0.2, subT);
-            this.momLeftArm.rotation.z = lerp(0.8, 0.9, subT);
-          }
+          this.wineGlassTilt = 0;
+          returnPhase = `blending to Euler rest (${((t - 0.7) / 0.3 * 100).toFixed(0)}%)`;
         }
+        this.updateWineGlassOrientation(this.wineGlassTilt);
+
+        // Liquid stays empty during return
+        this.wineLiquidFill = 0;
+        this.updateWineLiquidClip();
+
+        // Blend arm back to Euler rest pose in last 30%
+        if (t > 0.7 && this.momLeftArm && this.momLeftElbow) {
+          const blendT = (t - 0.7) / 0.3;
+          const restQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.5, 0, 1.1));
+          this.momLeftArm.quaternion.slerp(restQ, blendT);
+          const elbowRestQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, -1.1));
+          this.momLeftElbow.quaternion.slerp(elbowRestQ, blendT);
+        }
+
+        if (this.animDebugEnabled) this.animDebug = `WINE-RETURN t=${t.toFixed(2)} | ${returnPhase} | wrist=(${wristReturn.x.toFixed(2)}, ${wristReturn.y.toFixed(2)}, ${wristReturn.z.toFixed(2)}) | tilt=${this.wineGlassTilt.toFixed(2)} | fill=0`;
+
         if (t >= 1) {
+          // Snap to Euler rest pose
+          if (this.momLeftArm) this.momLeftArm.rotation.set(-0.5, 0, 1.1);
+          if (this.momLeftElbow) this.momLeftElbow.rotation.set(0, 0, -1.1);
+          // Return glass to table
+          if (this.relaxWineGlass && this.relaxWineGlassOrigParent) {
+            this.relaxWineGlassOrigParent.add(this.relaxWineGlass);
+            this.relaxWineGlass.position.copy(this.relaxWineGlassOrigPos);
+            this.relaxWineGlass.quaternion.copy(this.relaxWineGlassOrigQuat);
+          }
+          this.wineLiquidBaseY = 0;
+          this.relaxAnim = { type: "wine-refill", elapsed: 0, duration: 0.4 };
+        }
+        break;
+      }
+      case "wine-refill": {
+        // Glass is on table, refill liquid
+        this.wineLiquidFill = eased;
+        this.updateWineLiquidClip();
+        if (this.animDebugEnabled) this.animDebug = `WINE-REFILL t=${t.toFixed(2)} | fill=${this.wineLiquidFill.toFixed(2)}`;
+        if (t >= 1) {
+          this.wineLiquidFill = 1.0;
+          this.updateWineLiquidClip();
+          if (this.animDebugEnabled) this.animDebug = "";
           this.relaxAnim = { type: "idle", elapsed: 0, duration: 0 };
         }
         break;
@@ -4263,19 +4894,113 @@ export class Game {
     }
   }
 
+  // ── Wine IK helpers ──────────────────────────────────────────────────────
+
+  /** Cubic Bezier interpolation for 3D points */
+  private cubicBezier(p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3, p3: THREE.Vector3, t: number): THREE.Vector3 {
+    const u = 1 - t;
+    return new THREE.Vector3()
+      .addScaledVector(p0, u * u * u)
+      .addScaledVector(p1, 3 * u * u * t)
+      .addScaledVector(p2, 3 * u * t * t)
+      .addScaledVector(p3, t * t * t);
+  }
+
+  /** Two-joint IK solver: computes shoulder and elbow orientations to reach target wrist position.
+   *  Shoulder = momLeftArm, Elbow = momLeftElbow. Works in mom's local space. */
+  private solveWineArmIK(targetWrist: THREE.Vector3) {
+    if (!this.momLeftArm || !this.momLeftElbow) return;
+
+    const shoulder = this.momLeftArm.position; // in mom local space
+    const L1 = 0.20; // upper arm length
+    const L2 = 0.14; // forearm length
+
+    const delta = new THREE.Vector3().subVectors(targetWrist, shoulder);
+    const d = delta.length();
+    const dc = Math.max(Math.abs(L1 - L2) + 0.001, Math.min(d, L1 + L2 - 0.001));
+
+    // Elbow angle (law of cosines)
+    const cosE = (L1 * L1 + L2 * L2 - dc * dc) / (2 * L1 * L2);
+    const elbowInternalAngle = Math.acos(Math.max(-1, Math.min(1, cosE)));
+
+    // Find elbow position via sphere intersection
+    const dir = delta.clone().normalize();
+    const a = (L1 * L1 - L2 * L2 + dc * dc) / (2 * dc);
+    const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
+    const mid = shoulder.clone().add(dir.clone().multiplyScalar(a));
+
+    // Pole hint: elbow should point forward and slightly outward (-X, +Z in mom space)
+    const poleHint = new THREE.Vector3(-0.3, 0, 1).normalize();
+    const projected = poleHint.clone().sub(dir.clone().multiplyScalar(poleHint.dot(dir)));
+    if (projected.length() < 0.001) projected.set(0, 0, 1);
+    projected.normalize();
+
+    const elbowPos = mid.clone().add(projected.multiplyScalar(h));
+
+    // Shoulder quaternion: rotate -Y to point toward elbow
+    const armDown = new THREE.Vector3(0, -1, 0);
+    const shoulderToElbow = new THREE.Vector3().subVectors(elbowPos, shoulder).normalize();
+    this.momLeftArm.quaternion.setFromUnitVectors(armDown, shoulderToElbow);
+
+    // Elbow quaternion: rotate -Y to point from elbow toward wrist, in shoulder's local space
+    const elbowToWrist = new THREE.Vector3().subVectors(targetWrist, elbowPos).normalize();
+    const shoulderQInv = this.momLeftArm.quaternion.clone().invert();
+    const forearmDirLocal = elbowToWrist.clone().applyQuaternion(shoulderQInv);
+    this.momLeftElbow.quaternion.setFromUnitVectors(armDown, forearmDirLocal);
+  }
+
+  /** Keep the wine glass upright in world space (cancel parent rotations), with optional tilt */
+  private updateWineGlassOrientation(tiltAngle: number) {
+    if (!this.relaxWineGlass || !this.relaxWineGlass.parent) return;
+    const parentWorldQuat = new THREE.Quaternion();
+    this.relaxWineGlass.parent.getWorldQuaternion(parentWorldQuat);
+    // Cancel parent rotation: glass world quat = identity (upright)
+    const cancelQuat = parentWorldQuat.clone().invert();
+    if (Math.abs(tiltAngle) > 0.001) {
+      // Apply tilt around world -Z axis (tips glass toward +X / northeast, into character's mouth)
+      const tiltQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, -1), tiltAngle);
+      // glassLocal = inv(parentWorld) * tilt
+      this.relaxWineGlass.quaternion.copy(cancelQuat.premultiply(tiltQuat));
+    } else {
+      this.relaxWineGlass.quaternion.copy(cancelQuat);
+    }
+  }
+
+  /** Update the wine liquid clipping plane based on fill level and glass world position */
+  private updateWineLiquidClip() {
+    if (!this.wineLiquidClipPlane || !this.relaxWineGlass) return;
+    // Compute world position of the glass center
+    const glassWorld = new THREE.Vector3();
+    this.relaxWineGlass.getWorldPosition(glassWorld);
+    // Liquid height range in local Y: ~0.10 (bottom of bowl) to ~0.19 (top)
+    const fillOffset = 0.10 + 0.09 * this.wineLiquidFill;
+    // When glass is upright, clip at glassWorld.y + fillOffset
+    // When tilted, use the base Y recorded at drink start for stable surface
+    const baseY = this.wineLiquidBaseY > 0 ? this.wineLiquidBaseY : glassWorld.y;
+    const clipY = baseY + fillOffset;
+    this.wineLiquidClipPlane.constant = clipY;
+  }
+
   private checkGoal() {
     if (this.won) return;
+    // In task mode, winning is triggered by completing the final task (drinkCoffee), not by stepping on a tile
+    if (this.level.levelMode === "tasks") return;
     const lvl = this.level;
     if (
       Math.round(this.momPos.x) === lvl.goal.x &&
       Math.round(this.momPos.z) === lvl.goal.z
     ) {
-      this.won = true;
-      AudioManager.play("success");
-      AudioManager.stopAmbient();
-      this.relaxZoomPhase = true;
-      this.relaxZoomElapsed = 0;
+      this.triggerWin();
     }
+  }
+
+  private triggerWin() {
+    if (this.won) return;
+    this.won = true;
+    AudioManager.play("success");
+    AudioManager.stopAmbient();
+    this.relaxZoomPhase = true;
+    this.relaxZoomElapsed = 0;
   }
 
   private updateDogCaughtAnim(dt: number) {
@@ -4389,38 +5114,35 @@ export class Game {
   enterRelaxScene() {
     this.relaxSceneActive = true;
 
-    // Compute walk waypoints: goal → gap between couch & coffee table → couch front
+    // Compute walk waypoints: goal → along chaise front → seat on sofa section
     const couchGroup = this.furnitureGroups.find(g => g.userData.label === "couch");
-    const coffeeTableGroup = this.furnitureGroups.find(g => g.userData.label === "coffeeTable");
     const couchFurn = this.level.furniture.find(f => f.label === "couch");
 
     const momY = this.mom.position.y;
-    // The gap between couch south edge and coffee table north edge
-    const gapZ = couchGroup && coffeeTableGroup
-      ? (couchGroup.position.z + (couchFurn ? couchFurn.h * TILE_SIZE * 0.5 : 0.5)
-         + coffeeTableGroup.position.z - (this.level.furniture.find(f => f.label === "coffeeTable")?.h ?? 2) * TILE_SIZE * 0.5) / 2
-      : this.mom.position.z + 0.3;
-
-    // East end of the gap (entry point — just west of goal)
-    const gapEntryX = couchGroup
-      ? couchGroup.position.x + (couchFurn ? couchFurn.w * TILE_SIZE * 0.5 : 1.0) + TILE_SIZE * 0.5
-      : this.mom.position.x - 0.3;
-    // Center of couch in x (where she'll sit)
+    const tw_couch = couchFurn ? couchFurn.w * TILE_SIZE : 2.0;
+    const th_couch = couchFurn ? couchFurn.h * TILE_SIZE : 1.5;
     const couchCenterX = couchGroup ? couchGroup.position.x : this.mom.position.x - 1.0;
-    // Offset toward east end (closest to side table)
+    const couchCenterZ = couchGroup ? couchGroup.position.z : this.mom.position.z;
+
+    // Sofa section is in the back portion (north side after 180° rotation)
+    const sofaD = tw_couch * 0.40; // depth of sofa seating area
+    // After 180° rotation: sofa back is at couchCenter.z - th/2, sofa front at couchCenter.z - th/2 + sofaD
+    const sofaCenterZ = couchCenterZ - th_couch / 2 + sofaD / 2;
+
+    // Seat on couch: near chaise junction on the sofa section
     const seatOffsetX = couchFurn ? couchFurn.w * TILE_SIZE * 0.25 : 0;
     const seatX = couchCenterX + seatOffsetX;
-    // Seat z: pushed toward back cushions (further back on the couch)
-    const th_couch = couchFurn ? couchFurn.h * TILE_SIZE : 1.0;
-    const seatZ = couchGroup ? couchGroup.position.z - th_couch * 0.28 : gapZ - 0.3;
-    // Seat Y: Mom's hip bottom (local y=0.30) rests on couch seat top surface
-    // Couch seat top = group.y(0.15) + seat center(0.25) + half-thickness(0.08) = 0.48
+    const seatZ = sofaCenterZ + sofaD * 0.20;
+    // Standing position: 2 tiles south (+Z world) of the seat, aligned in X
+    const standX = seatX;
+    const standZ = seatZ + 2 * TILE_SIZE;
+    // Seat Y
     const seatTopY = (couchGroup?.position.y ?? TILE_H) + 0.34;
-    const seatedMomY = seatTopY - 0.30; // hip pivot sits on seat surface
+    const seatedMomY = seatTopY - 0.30 + 0.1; // hip pivot sits on seat surface (+0.1 offset so Mom sits on top, not inside)
 
     this.relaxWaypoints = [
-      new THREE.Vector3(gapEntryX, momY, gapZ),       // step 1: into the gap
-      new THREE.Vector3(seatX, momY, gapZ),            // step 2: walk to east seat (near side table)
+      new THREE.Vector3(standX, momY, standZ),   // step 1: walk from goal to standing position in front of seat
+      new THREE.Vector3(standX, momY, standZ),   // step 2: already there (phase 2 handles sit-down)
     ];
     this.relaxSeatPos = new THREE.Vector3(seatX, seatedMomY, seatZ);
     this.relaxWalkStartPos = this.mom.position.clone();
@@ -4430,7 +5152,7 @@ export class Game {
     this.relaxPhase = 0;
     this.relaxPhaseT = 0;
 
-    // Find existing furniture groups by label (coffeeTableGroup already declared above)
+    // Find existing furniture groups by label
     const tvGroup = this.furnitureGroups.find(g => g.userData.label === "tv");
     const sideTableGroup = this.furnitureGroups.find(g => g.userData.label === "sideTable");
 
@@ -4486,13 +5208,20 @@ export class Game {
       wBowl.position.y = 0.155;
       wineGroup.add(wBowl);
 
-      // Wine liquid
+      // Wine liquid — uses clipping plane for gravity-aligned surface
+      this.wineLiquidClipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 100);
       const wLiquid = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.055, 0.022, 0.07, 10),
-        new THREE.MeshStandardMaterial({ color: "#8B1A2A", emissive: "#3A0808", emissiveIntensity: 0.3, roughness: 0.5 })
+        new THREE.CylinderGeometry(0.054, 0.020, 0.10, 10),
+        new THREE.MeshStandardMaterial({
+          color: "#8B1A2A", emissive: "#3A0808", emissiveIntensity: 0.3, roughness: 0.5,
+          clippingPlanes: [this.wineLiquidClipPlane],
+          side: THREE.DoubleSide,
+        })
       );
-      wLiquid.position.y = 0.14;
+      wLiquid.position.y = 0.15;
       wineGroup.add(wLiquid);
+      this.wineLiquidMesh = wLiquid;
+      this.wineLiquidFill = 1.0;
 
       // Position glass on couch-side of table, on top surface
       wineGroup.position.set(-0.02, 0.34, -0.06);
@@ -4562,8 +5291,8 @@ export class Game {
       sideTableGroup.add(bottleGroup);
     }
 
-    // ── Build cheese tray on coffee table ──
-    if (coffeeTableGroup) {
+    // ── Build cheese tray on couch seat (beside Mom) ──
+    if (couchGroup) {
       const trayGroup = new THREE.Group();
 
       // Wooden tray/board
@@ -4583,7 +5312,7 @@ export class Game {
         { x: -0.02, z: 0.03 },
         { x: 0.06, z: 0.02 },
       ];
-      cheesePositions.forEach((pos, i) => {
+      cheesePositions.forEach((pos) => {
         const piece = new THREE.Mesh(
           new THREE.BoxGeometry(0.04, 0.025, 0.035),
           cheeseMat.clone()
@@ -4605,20 +5334,24 @@ export class Game {
       trayGroup.add(cheeseHitbox);
       this.relaxClickables.push(cheeseHitbox);
 
-      // Position tray on top of coffee table
-      trayGroup.position.set(0, 0.22, 0);
-      coffeeTableGroup.add(trayGroup);
+      // Position tray on sofa section seat, to Mom's left (west of her seat position)
+      // Sofa section is in the back half; tray sits in local +Z area (sofa part)
+      const sofaSectionZ = th_couch / 2 - sofaD * 0.4; // in sofa section, slightly forward of center
+      const trayOffsetX = couchFurn ? -couchFurn.w * TILE_SIZE * 0.15 : -0.15;
+      trayGroup.position.set(trayOffsetX, 0.34, sofaSectionZ);
+      couchGroup.add(trayGroup);
 
       // Add glow hint for cheese
       const cheeseGlow = new THREE.Mesh(
         new THREE.SphereGeometry(0.06, 8, 8),
         new THREE.MeshStandardMaterial({ color: "#FFD700", emissive: "#FFD700", emissiveIntensity: 0.6, transparent: true, opacity: 0.3 })
       );
-      cheeseGlow.position.set(0, 0.28, 0);
+      cheeseGlow.position.set(trayOffsetX, 0.40, sofaSectionZ);
       cheeseGlow.userData.isGlow = true;
-      coffeeTableGroup.add(cheeseGlow);
+      couchGroup.add(cheeseGlow);
       this.glowMeshes.push(cheeseGlow);
     }
+
 
     // Hide the goal ring
     if (this.goalRing) this.goalRing.visible = false;

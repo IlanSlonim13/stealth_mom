@@ -1,4 +1,4 @@
-export type SceneKey = "livingRoom" | "hallway" | "kitchen" | "playroom" | "frontDoor";
+export type SceneKey = "livingRoom" | "hallway" | "kitchen" | "playroom" | "frontDoor" | "sunroom";
 
 export interface GridPos {
   x: number;
@@ -32,7 +32,8 @@ export type FurnitureShape =
   | "fireplace" | "toilet" | "vanity" | "roundGlassTable" | "diningChair"
   | "diningTable" | "credenza" | "chaiseLounge" | "chinaCredenza"
   | "barChair" | "gasStove" | "wallCabinet" | "hangingPots"
-  | "window" | "door";
+  | "window" | "door"
+  | "coffeeMaker" | "dogBowl" | "smallTable" | "sunroomChair";
 
 export interface FurnitureDef {
   x: number;
@@ -68,6 +69,25 @@ export interface NpcDef {
   facing?: number;
   /** Husband only */
   thought?: string;
+  /** If true, skip detection checks (friendly NPC) */
+  friendly?: boolean;
+}
+
+export interface TaskDef {
+  id: string;
+  label: string;
+  /** Furniture label to interact with (null = auto-complete task) */
+  interactWith: string | null;
+  /** Task IDs that must be completed first */
+  requires: string[];
+  /** Duration of interaction in seconds (0 = instant) */
+  duration: number;
+  /** Auto-complete after this many seconds (0 = manual) */
+  autoComplete: number;
+  /** Item given on completion */
+  givesItem?: string;
+  /** Item required (and consumed) to perform this task */
+  requiresItem?: string;
 }
 
 export interface SummonNpcDef {
@@ -99,6 +119,14 @@ export interface LevelData {
   windowWalls?: [number, number][];
   summonNpc?: SummonNpcDef;
   caughtLines: string[];
+  /** Level mode: "stealth" (default) or "tasks" (task-management) */
+  levelMode?: "stealth" | "tasks";
+  /** Task definitions for task-mode levels */
+  tasks?: TaskDef[];
+  /** Coffee brew time in seconds */
+  coffeeBrewSecs?: number;
+  /** Coffee cold timer in seconds (after brew completes) */
+  coffeeColdSecs?: number;
 }
 
 export const PALETTES: Record<SceneKey, {
@@ -136,6 +164,12 @@ export const PALETTES: Record<SceneKey, {
     bg: "#0F1520", ambient: "#E0D8D0",
     grass: "#4A8030", fence: "#ECE4D4", baseboard: "#B8A890",
   },
+  sunroom: {
+    floor1: "#C8B89A", floor2: "#BCA88A", wall: "#F5EDE0", rug: "#A09070",
+    furniture: "#5A4A3A", goal: "#6B8E23", accent: "#F0C060",
+    bg: "#1A1810", ambient: "#FFF8E8",
+    grass: "#5A9A3A", fence: "#E8E0D0", baseboard: "#C4B498",
+  },
 };
 
 export const MOM_OUTFITS: Record<SceneKey, MomOutfit> = {
@@ -144,4 +178,5 @@ export const MOM_OUTFITS: Record<SceneKey, MomOutfit> = {
   kitchen:    { pantsColor: "#2A2A2A", topColor: "#E86B6B", topStyle: "fitted",    hair: "ponytail" },
   playroom:   { pantsColor: "#7A7A8A", topColor: "#5A7A5A", topStyle: "oversized", hair: "messyBun" },
   frontDoor:  { pantsColor: "#C4A0B8", topColor: "#D4B0C8", topStyle: "nightgown", hair: "down" },
+  sunroom:    { pantsColor: "#4A4A5A", topColor: "#E8C8A0", topStyle: "fitted",    hair: "ponytail" },
 };

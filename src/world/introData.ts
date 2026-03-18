@@ -5,4 +5,5 @@ export const INTRO_QUOTES: Record<number, string> = {
   3: "Nobody touches MY chocolate.",
   4: "2% battery. This is life or death.",
   5: "The tracking says delivered. It's go time.",
+  6: "Coffee first. Everything else is negotiable.",
 };

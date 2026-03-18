@@ -65,4 +65,13 @@ export const RELAX_DATA: Record<number, RelaxDef> = {
       { id: "gift", emoji: "\uD83C\uDF81", clickEmoji: "*gasp!*" },
     ],
   },
+  6: {
+    bgGradient: "radial-gradient(circle, #2A1A10 0%, #150A05 100%)",
+    momQuote: "Worth every chaotic second.",
+    items: [
+      { id: "coffee", emoji: "\u2615", clickEmoji: "*siiiiip*" },
+      { id: "sunrise", emoji: "\uD83C\uDF05", clickEmoji: "*warm glow*" },
+      { id: "book", emoji: "\uD83D\uDCDA", clickEmoji: "*page turn*" },
+    ],
+  },
 };

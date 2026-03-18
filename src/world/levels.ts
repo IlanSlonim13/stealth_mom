@@ -1,4 +1,4 @@
-import { DOG_SOUND_RADIUS } from "../utils/constants";
+import { DOG_SOUND_RADIUS, COFFEE_BREW_SECS, COFFEE_COLD_SECS } from "../utils/constants";
 import type { LevelData } from "./LevelTypes";
 
 export const LEVELS: LevelData[] = [
@@ -74,16 +74,12 @@ export const LEVELS: LevelData[] = [
       // ─── Living Room (x=2..27, z=15..33) ───
       // Lamp near couch, along west wall
       { x:2,  z:16, w:4, h:4, label:"lamp",           col:"#D4AF37", shape:"lamp"                },
-      // Couch (rotated 180° — back faces north, sitter faces south toward TV)
-      { x:4,  z:22, w:8, h:4, label:"couch",          col:"#8B6F5C", shape:"couch", rot:Math.PI  },
-      // Side table with wine glass — next to couch
-      { x:12, z:22, w:2, h:2, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
-      // Coffee table between TV and couch
-      { x:6,  z:26, w:4, h:2, label:"coffeeTable",    col:"#5C3A1E", shape:"coffeeTable"         },
-      // Ottoman to the right of coffee table area
-      { x:14, z:26, w:4, h:4, label:"ottoman",        col:"#8B6F5C", shape:"ottoman"             },
-      // Shelf (decoy) — along west wall
-      { x:2,  z:26, w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true },
+      // Couch with chaise lounge on right end (rotated 180° — back faces north, sitter faces south toward TV)
+      { x:4,  z:22, w:8, h:6, label:"couch",          col:"#8B6F5C", shape:"couch", rot:Math.PI  },
+      // Side table with wine glass — flush against couch
+      { x:11, z:22, w:2, h:2, label:"sideTable",      col:"#5C3A1E", shape:"sideTableGlass"      },
+      // Shelf (decoy) — west wall, centered between couch and TV, rotated 90°
+      { x:2,  z:27, w:4, h:4, label:"shelf",          col:"#8B5A2B", shape:"shelf", hasDecoy:true, rot:Math.PI/2 },
       // TV — against south wall
       { x:4,  z:32, w:8, h:2, label:"tv",             col:"#2A2A3A", shape:"tvUnit"              },
       // Plant — SE area of living room
@@ -132,7 +128,7 @@ export const LEVELS: LevelData[] = [
     ],
     rug: { x:4, z:22, w:10, h:10 },
     playerStart: { x:33, z:20 },
-    goal: { x:12, z:24, label:"The Couch" },
+    goal: { x:7, z:25, label:"The Couch" },
     npcs: [
       { type:"dog", x:22, z:24, radius: DOG_SOUND_RADIUS },
     ],
@@ -719,6 +715,127 @@ export const LEVELS: LevelData[] = [
       "Total chaos. Everyone converges on you.",
       "The trifecta of detection. Game over.",
       "You almost made it to the package...",
+    ],
+  },
+
+  // ── Level 6 ─ "The Morning Routine" ── Kitchen + Bathroom + Hallway + Sunroom ── 56×48
+  {
+    id: 6,
+    name: "The Morning Routine",
+    scene: "sunroom",
+    subtitle: "Coffee first. Then chaos management.",
+    winText: "Achievement Unlocked: Morning Person (Just This Once)",
+    levelMode: "tasks",
+    coffeeBrewSecs: COFFEE_BREW_SECS,
+    coffeeColdSecs: COFFEE_COLD_SECS,
+    grid: { w: 56, h: 48 },
+    walls: [
+      // North wall (z=0,1) — full width
+      ...((): [number,number][] => { const r: [number,number][] = []; for (let x=0;x<56;x++) { r.push([x,0]); r.push([x,1]); } return r; })(),
+      // West wall (x=0,1)
+      ...((): [number,number][] => { const r: [number,number][] = []; for (let z=2;z<46;z++) { r.push([0,z]); r.push([1,z]); } return r; })(),
+      // East wall (x=54,55)
+      ...((): [number,number][] => { const r: [number,number][] = []; for (let z=2;z<46;z++) { r.push([54,z]); r.push([55,z]); } return r; })(),
+      // South wall (z=46,47) — full width
+      ...((): [number,number][] => { const r: [number,number][] = []; for (let x=0;x<56;x++) { r.push([x,46]); r.push([x,47]); } return r; })(),
+    ],
+    interiorWalls: [
+      // Vertical wall at x=28 from z=2 to z=21 (Kitchen | Bathroom+Hallway) — doorway z=8..9
+      ...((): [number,number][] => { const r: [number,number][] = [];
+        for (let z=2;z<8;z++) r.push([28,z]);
+        for (let z=10;z<22;z++) r.push([28,z]);
+        return r; })(),
+      // Horizontal wall at z=15 from x=29 to x=53 (Bathroom | Hallway) — no doorway needed (open plan)
+      // Actually split bathroom from hallway with wall at z=15, doorway at x=38..39
+      ...((): [number,number][] => { const r: [number,number][] = [];
+        for (let x=29;x<38;x++) r.push([x,15]);
+        for (let x=40;x<54;x++) r.push([x,15]);
+        return r; })(),
+      // Horizontal wall at z=22 — Kitchen/Bath/Hall above, Sunroom below — doorway at x=14..15 and x=42..43
+      ...((): [number,number][] => { const r: [number,number][] = [];
+        for (let x=2;x<14;x++) r.push([x,22]);
+        for (let x=16;x<42;x++) r.push([x,22]);
+        for (let x=44;x<54;x++) r.push([x,22]);
+        return r; })(),
+    ],
+    furniture: [
+      // ─── Kitchen (x=2..27, z=2..21) ───
+      { x:4,  z:2,  w:4, h:2, label:"coffeeMaker",    col:"#333333", shape:"coffeeMaker"    },
+      { x:8,  z:2,  w:4, h:3, label:"gasStove",        col:"#444444", shape:"gasStove"       },
+      { x:14, z:2,  w:4, h:3, label:"fridge",           col:"#D0D8E0", shape:"fridge"         },
+      { x:18, z:2,  w:4, h:2, label:"sink",             col:"#D0D0D0", shape:"sink"           },
+      { x:22, z:2,  w:6, h:2, label:"counter",          col:"#C8B89A", shape:"counter"        },
+      { x:4,  z:14, w:2, h:2, label:"dogBowl",          col:"#888888", shape:"dogBowl"        },
+      { x:10, z:10, w:8, h:4, label:"kitchenTable",     col:"#6B3A1E", shape:"diningTable"    },
+      { x:9,  z:11, w:2, h:2, label:"kChairL",          col:"#6B4226", shape:"diningChair", rot:Math.PI/2 },
+      { x:17, z:11, w:2, h:2, label:"kChairR",          col:"#6B4226", shape:"diningChair", rot:-Math.PI/2 },
+      { x:12, z:9,  w:2, h:1, label:"kChairT",          col:"#6B4226", shape:"diningChair"    },
+      { x:12, z:14, w:2, h:1, label:"kChairB",          col:"#6B4226", shape:"diningChair", rot:Math.PI },
+      // Door kitchen→sunroom (z=22, x=14..15)
+      { x:14, z:22, w:2, h:1, label:"kitSunDoor",       col:"#8B6F5C", shape:"door"           },
+
+      // ─── Bathroom (x=29..53, z=2..14) ───
+      { x:30, z:3,  w:4, h:4, label:"vanity",           col:"#6A5A4A", shape:"vanity"         },
+      { x:44, z:3,  w:8, h:4, label:"bathtub",          col:"#E8F0F0", shape:"bathtub"        },
+      { x:36, z:8,  w:4, h:4, label:"toilet",           col:"#F0F0F0", shape:"toilet"         },
+      // Door kitchen↔bathroom (x=28, z=8..9)
+      { x:28, z:8,  w:1, h:2, label:"kitBathDoor",      col:"#8B6F5C", shape:"door"           },
+      // Door bathroom↔hallway (z=15, x=38..39)
+      { x:38, z:15, w:2, h:1, label:"bathHallDoor",     col:"#8B6F5C", shape:"door"           },
+
+      // ─── Hallway (x=29..53, z=16..21) ───
+      { x:48, z:17, w:4, h:4, label:"shoeRack",         col:"#6B4226", shape:"shoeRack"       },
+      { x:30, z:17, w:4, h:4, label:"hallLamp",         col:"#D4AF37", shape:"lamp"           },
+      // Backyard door on east wall (x=54, z=19..20) — use door in furniture
+      { x:53, z:19, w:1, h:2, label:"backyardDoor",     col:"#8B6F5C", shape:"door"           },
+      // Door hallway→sunroom (z=22, x=42..43)
+      { x:42, z:22, w:2, h:1, label:"hallSunDoor",      col:"#8B6F5C", shape:"door"           },
+
+      // ─── Sunroom / Screen Porch (x=2..53, z=23..45) ───
+      { x:6,  z:26, w:4, h:3, label:"sunroomTable",     col:"#5A4A3A", shape:"smallTable"     },
+      { x:20, z:34, w:6, h:4, label:"sunroomChair",     col:"#6B8E23", shape:"chaiseLounge"   },
+      { x:6,  z:38, w:4, h:4, label:"plant1",           col:"#4A7A4A", shape:"plant"          },
+      { x:44, z:38, w:4, h:4, label:"plant2",           col:"#4A7A4A", shape:"plant"          },
+      { x:30, z:26, w:4, h:4, label:"sunBookcase",      col:"#8B5A2B", shape:"bookcase"       },
+      { x:44, z:26, w:4, h:4, label:"sunLamp",          col:"#D4AF37", shape:"lamp"           },
+    ],
+    windowWalls: [
+      // North wall (z=1) — kitchen, bathroom
+      [8,1],[9,1],[10,1],  [18,1],[19,1],[20,1],  [36,1],[37,1],[38,1],  [48,1],[49,1],[50,1],
+      // West wall (x=1) — kitchen, sunroom
+      [1,8],[1,9],[1,10],  [1,30],[1,31],[1,32],  [1,38],[1,39],[1,40],
+      // East wall (x=54) — bathroom, sunroom
+      [54,8],[54,9],[54,10],  [54,30],[54,31],[54,32],
+      // South wall (z=46) — sunroom
+      [12,46],[13,46],[14,46],  [26,46],[27,46],[28,46],  [40,46],[41,46],[42,46],
+    ],
+    rug: { x:14, z:28, w:20, h:12 },
+    playerStart: { x:14, z:12 },
+    goal: { x:22, z:35, label:"Sunroom Chair" },
+    npcs: [
+      { type:"dog", x:6, z:16, radius: DOG_SOUND_RADIUS, friendly: true },
+    ],
+    traps: [],
+    decoys: 0,
+    tasks: [
+      { id:"startCoffee",  label:"Start coffee maker",  interactWith:"coffeeMaker",    requires:[],                  duration:0, autoComplete:0 },
+      { id:"crackEggs",    label:"Crack eggs",           interactWith:"gasStove",       requires:[],                  duration:1.5, autoComplete:0 },
+      { id:"cookEggs",     label:"Eggs cooking...",      interactWith:null,             requires:["crackEggs"],       duration:0, autoComplete:8 },
+      { id:"serveKids",    label:"Serve breakfast",      interactWith:"kitchenTable",   requires:["cookEggs"],        duration:0, autoComplete:0 },
+      { id:"getWallet",    label:"Pick up wallet",       interactWith:"sunroomTable",   requires:[],                  duration:0, autoComplete:0, givesItem:"Wallet" },
+      { id:"placeWallet",  label:"Place wallet on table",interactWith:"kitchenTable",   requires:["getWallet"],       duration:0, autoComplete:0, requiresItem:"Wallet" },
+      { id:"getKeys",      label:"Pick up keys",         interactWith:"vanity",         requires:[],                  duration:0, autoComplete:0, givesItem:"Keys" },
+      { id:"placeKeys",    label:"Place keys on table",  interactWith:"kitchenTable",   requires:["getKeys"],         duration:0, autoComplete:0, requiresItem:"Keys" },
+      { id:"fillBowl",     label:"Feed the dog",         interactWith:"dogBowl",        requires:[],                  duration:1, autoComplete:0 },
+      { id:"dogEat",       label:"Dog eating...",        interactWith:null,             requires:["fillBowl"],        duration:0, autoComplete:6 },
+      { id:"letDogOut",    label:"Let dog out",          interactWith:"backyardDoor",   requires:["dogEat"],          duration:0, autoComplete:0 },
+      { id:"getCoffee",    label:"Pick up coffee",       interactWith:"coffeeMaker",    requires:["startCoffee"],     duration:0, autoComplete:0, givesItem:"Coffee" },
+      { id:"drinkCoffee",  label:"Enjoy coffee!",        interactWith:"sunroomChair",   requires:["getCoffee","serveKids","placeWallet","placeKeys","letDogOut"], duration:0, autoComplete:0, requiresItem:"Coffee" },
+    ],
+    caughtLines: [
+      "The coffee got cold... Mom's worst nightmare.",
+      "Ice cold. Just like your morning.",
+      "Even the microwave can't save this.",
     ],
   },
 ];

@@ -4,6 +4,8 @@ import { LEVELS } from "../world/levels";
 export type Screen = "menu" | "intro" | "game" | "caught" | "win" | "relax";
 export type DecoyMode = false | "throw";
 
+export type TaskStatus = "locked" | "available" | "active" | "done";
+
 interface GameState {
   screen: Screen;
   levelIdx: number;
@@ -16,6 +18,12 @@ interface GameState {
   introActive: boolean;      // true while intro zoom is playing
   relaxActive: boolean;      // true when post-level relaxation overlay is showing
   skipToEnd: boolean;        // true when "End" dev button was used — triggers jumpToWinSequence
+
+  // Task-mode state
+  nearTask: string | null;             // task ID mom is near and can perform
+  taskStatuses: Record<string, TaskStatus>;  // task ID → status
+  coffeeTimer: number;                 // 0..1 fraction of cold timer remaining (1 = full, 0 = cold)
+  taskItem: string | null;             // item currently held for task mode
 
   startLevel: (idx: number) => void;
   startLevelEnd: (idx: number) => void;
@@ -30,6 +38,10 @@ interface GameState {
   setIntroActive: (v: boolean) => void;
   setRelaxActive: (v: boolean) => void;
   setSkipToEnd: (v: boolean) => void;
+  setNearTask: (taskId: string | null) => void;
+  setTaskStatuses: (statuses: Record<string, TaskStatus>) => void;
+  setCoffeeTimer: (v: number) => void;
+  setTaskItem: (item: string | null) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -44,6 +56,10 @@ export const useGameStore = create<GameState>((set) => ({
   introActive: false,
   relaxActive: false,
   skipToEnd: false,
+  nearTask: null,
+  taskStatuses: {},
+  coffeeTimer: 1,
+  taskItem: null,
 
   startLevel: (idx) => {
     set({
@@ -58,6 +74,10 @@ export const useGameStore = create<GameState>((set) => ({
       nearPickup: null,
       caughtLine: "",
       winText: "",
+      nearTask: null,
+      taskStatuses: {},
+      coffeeTimer: 1,
+      taskItem: null,
     });
   },
 
@@ -74,6 +94,10 @@ export const useGameStore = create<GameState>((set) => ({
       nearPickup: null,
       caughtLine: "",
       winText: "",
+      nearTask: null,
+      taskStatuses: {},
+      coffeeTimer: 1,
+      taskItem: null,
     });
   },
 
@@ -97,4 +121,8 @@ export const useGameStore = create<GameState>((set) => ({
   setIntroActive: (v) => set({ introActive: v }),
   setRelaxActive: (v) => set({ relaxActive: v }),
   setSkipToEnd: (v) => set({ skipToEnd: v }),
+  setNearTask: (taskId) => set({ nearTask: taskId }),
+  setTaskStatuses: (statuses) => set({ taskStatuses: statuses }),
+  setCoffeeTimer: (v) => set({ coffeeTimer: v }),
+  setTaskItem: (item) => set({ taskItem: item }),
 }));
