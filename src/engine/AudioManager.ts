@@ -10,6 +10,7 @@ const SOUNDS = {
   "decoy-throw":     "/assets/audio/decoy-throw.mp3",
   "ambient-hum":     "/assets/audio/ambient-hum.mp3",
   "mom-sigh":        "/assets/audio/mom-sigh.mp3",
+  "token-pickup":    "/assets/audio/token-pickup.mp3",
 } as const;
 
 type SoundKey = keyof typeof SOUNDS;

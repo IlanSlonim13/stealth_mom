@@ -1,19 +1,30 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface ProgressState {
-  completedLevels: Set<number>;
-  adFree: boolean;
-
-  markComplete: (levelId: number) => void;
-  setAdFree: (value: boolean) => void;
+  /** levelId → best star count (0-3). Presence means completed. */
+  stars: Record<number, number>;
+  markComplete: (levelId: number, stars: number) => void;
+  isCompleted: (levelId: number) => boolean;
+  /** Level is playable if it's the first, or the previous one is done. */
+  isUnlocked: (levelId: number) => boolean;
+  totalStars: () => number;
 }
 
-export const useProgressStore = create<ProgressState>((set) => ({
-  completedLevels: new Set(),
-  adFree: false,
+export const useProgressStore = create<ProgressState>()(
+  persist(
+    (set, get) => ({
+      stars: {},
 
-  markComplete: (levelId) =>
-    set((s) => ({ completedLevels: new Set([...s.completedLevels, levelId]) })),
+      markComplete: (levelId, stars) =>
+        set((s) => ({
+          stars: { ...s.stars, [levelId]: Math.max(s.stars[levelId] ?? 0, stars) },
+        })),
 
-  setAdFree: (adFree) => set({ adFree }),
-}));
+      isCompleted: (levelId) => levelId in get().stars,
+      isUnlocked: (levelId) => levelId === 1 || (levelId - 1) in get().stars,
+      totalStars: () => Object.values(get().stars).reduce((a, b) => a + b, 0),
+    }),
+    { name: "stealth-mom-progress" },
+  ),
+);

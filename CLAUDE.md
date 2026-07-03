@@ -2,7 +2,9 @@
 
 ## Project: Stealth Mom — Operation Peace & Quiet
 
-Hyper-casual isometric stealth game. Metal Gear Solid meets suburban motherhood.
+Hyper-casual isometric stealth game with a Monument Valley-inspired look:
+floating diorama plinths, curated pastel palettes per level, arched windows,
+soft flat-shaded geometry. Metal Gear Solid meets suburban motherhood.
 Target: Android (via Capacitor), Web.
 
 ## Setup
@@ -15,23 +17,18 @@ npm run cap:sync     # sync web build to Android project
 npm run cap:open     # open Android Studio
 ```
 
-Capacitor Android setup (first time):
-```bash
-npx cap add android
-npm run build
-npm run cap:sync
-```
-
-No tests, linting, or formatting configured. TypeScript strict mode is enabled (`noEmit: true` — Vite handles bundling).
+No tests or linting configured. TypeScript strict mode (`noEmit: true` — Vite bundles).
+Level layouts self-validate at module load (see Level Builder below) — a broken
+level throws immediately on boot.
 
 ## Architecture
 
 | Layer | Tech |
 |-------|------|
-| Rendering | Three.js (isometric orthographic camera, toon shading) |
+| Rendering | Three.js (isometric orthographic camera, flat Lambert + pastel palettes) |
 | UI/Screens | React 18 + TypeScript |
-| State | Zustand (`src/state/gameStore.ts`, `src/state/progressStore.ts`) |
-| Audio | Howler.js (`src/engine/AudioManager.ts`) |
+| State | Zustand (`src/state/gameStore.ts`, `src/state/progressStore.ts` — persisted) |
+| Audio | Howler.js (`src/engine/AudioManager.ts`, silent skip if files missing) |
 | Pathfinding | A* (`src/pathfinding/Pathfinder.ts`) |
 | Mobile | Capacitor 6 (`capacitor.config.ts`) |
 | Build | Vite 6 with React plugin |
@@ -40,122 +37,137 @@ No tests, linting, or formatting configured. TypeScript strict mode is enabled (
 
 ```
 src/
-├── App.tsx                    — Screen router (menu|game|caught screens)
+├── App.tsx                    — Screen router (menu | game | caught)
 ├── main.tsx                   — React DOM entry + touch prevention
 ├── engine/
-│   ├── Game.ts               — Main game class (~4500 lines): Three.js scene,
-│   │                           game loop, NPC AI, furniture building, relax scene
-│   └── AudioManager.ts        — Howler.js audio pool (silent skip if files missing)
-├── state/
-│   ├── gameStore.ts          — Zustand: screen routing, decoy/inventory state
-│   └── progressStore.ts      — Zustand: completed levels, adFree flag
-├── ui/
-│   ├── GameView.tsx          — React wrapper owning Game instance + overlays
-│   ├── MainMenu.tsx          — Level select with NPC icons
-│   ├── HUD.tsx               — Action buttons (GRAB, THROW)
-│   ├── CaughtScreen.tsx      — Busted screen with shake animation
-│   └── LevelComplete.tsx     — Win screen with confetti
+│   ├── Game.ts               — Orchestrator: scene, frame loop, state machine
+│   │                           (intro → play → caught | winZoom → relax),
+│   │                           camera, input (tap / pinch / pan / wheel)
+│   ├── SceneryBuilder.ts     — Diorama: plinth, vertex-colored floor, walls
+│   │                           with camera-aware heights, arches, windows, rugs
+│   ├── FurnitureFactory.ts   — Registry of ~45 furniture shape builders
+│   ├── CharacterFactory.ts   — Rigs for Mom, dog, toddler, husband, cat
+│   ├── NpcSystem.ts          — Patrols, lures, chases, suspicion detection
+│   ├── EffectsSystem.ts      — Ripples, path dots, sparkles, confetti,
+│   │                           looping emitters (hearts/steam/bubbles/notes/zzz)
+│   ├── RelaxDirector.ts      — Win-scene choreography + prop registry
+│   ├── helpers.ts            — mat/box/rbox/cyl/sphere, cones, discs, sprites
+│   └── AudioManager.ts       — Howler pool
 ├── world/
-│   ├── LevelTypes.ts         — All TS interfaces, FurnitureShape union, PALETTES, MOM_OUTFITS
-│   ├── levels.ts             — LEVELS array (5 levels with all grid/furniture/NPC data)
-│   ├── introData.ts          — INTRO_QUOTES per level
-│   ├── relaxData.ts          — RELAX_DATA per level (3D scene for L1, emoji overlay L2-5)
-│   └── tutorialData.ts       — LEVEL1_TUTORIAL cards (currently disabled)
-├── pathfinding/
-│   └── Pathfinder.ts         — A* on tile grid
-└── utils/
-    ├── constants.ts          — Game tuning (speeds, ranges, delays, radii)
-    ├── coordinates.ts        — dist2d, pointInCone, gridToWorld
-    ├── easing.ts             — easeOutQuad, easeInOutQuad, lerp
-    └── humor.ts              — randomTagline, pickRandom
+│   ├── types.ts              — LevelSpec (authored) / LevelData (compiled)
+│   ├── themes.ts             — 15 Monument Valley palettes (one per level)
+│   ├── builder.ts            — buildLevel(): spec → tiles + validation
+│   ├── dialog.ts             — All humor: thoughts, caught lines, prop quips
+│   └── levels/               — index.ts (registry) + levels01to05/06to10/11to15
+├── state/
+│   ├── gameStore.ts          — Run state: screen, tokens, held decoy, throw mode
+│   └── progressStore.ts      — Persisted stars per level (localStorage), unlocks
+├── ui/
+│   ├── GameView.tsx          — Owns Game instance; intro bubble, relax overlay,
+│   │                           star reveal, floating feedback
+│   ├── MainMenu.tsx          — Level select grid with stars/locks + Continue
+│   ├── HUD.tsx               — Token pips, menu/retry, GRAB/THROW buttons
+│   └── CaughtScreen.tsx      — Busted screen
+├── pathfinding/Pathfinder.ts — A* on tile grid
+└── utils/                    — constants (all tuning), coordinates, easing
 ```
 
 ## Screens / Flow
 
 ```
-menu → (startLevel) → intro (2.2s zoom + speech bubble) → game
-game → (caught) → caught screen → retry / menu
-game → (won)    → relax zoom → relax scene → next level / menu
+menu → startLevel → intro (hold close-up 1.1s + zoom-out 2.1s + speech bubble) → play
+play → caught  → caught screen → retry / menu
+play → goal    → winZoom (1.7s dolly to seat) → relax scene → next / menu
 ```
 
-The win flow does NOT go through a "win" screen — it stays on `screen="game"` with `relaxActive=true` overlay until user clicks Next/Menu.
+The win flow stays on `screen="game"` with `relaxActive=true`; there is no
+separate win screen. Stars (= me-time tokens collected, 0–3) are written to
+`progressStore` the moment the goal is reached.
 
-## Levels
+## Levels (15)
 
-| ID | Name | Scene | Grid | NPCs | Traps | Decoys | Special |
-|----|------|-------|------|------|-------|--------|---------|
-| 1 | The Couch | livingRoom | 40×36 | Dog | — | TV Remote→dog | 3D relax scene (wine/cheese) |
-| 2 | The Bubble Bath | hallway | 48×36 | Toddler | — | Stuffed Bear→toddler | 4 hiding spots |
-| 3 | The Decoy | kitchen | 48×40 | Husband | — | Car Keys→husband | — |
-| 4 | The Minefield | playroom | 48×40 | (summoned) | 10 squeaky toys | Juice Box→toddler | Toddler spawns on trap |
-| 5 | The Delivery | frontDoor | 56×48 | Dog+Toddler+Husband | 2 toys | Remote+Beer→husband | Final level, 2 decoys |
+Escalating mechanics: 1 move+dog · 2 tokens · 3 vision cones · 4 hiding spots ·
+5 decoys · 6 cat · 7 squeaky traps · 8 dog+toddler · 9 husband+traps ·
+10 two toddlers · 11 minefield+summon · 12 husband+dog+decoy ·
+13 cats+toddler · 14 midnight kitchen · 15 everything at once.
 
-## NPC Types
+### Adding a level
 
-- **Dog:** Circular sound radius (default 8.8 tiles). Pulsing red circle visualization.
-- **Toddler:** Vision cone (60° angle, range 14). Green triangle. Patrols waypoints at 4.8 u/s.
-- **Husband:** Vision cone (40° angle, range 16). Orange triangle. Slower (2.8 u/s). Has thought bubble.
-- All NPCs can be lured by matching decoy items for 3 seconds.
+Write a `LevelSpec` (~60 lines, declarative) in `src/world/levels/` and add it
+to `SPECS` in `levels/index.ts`. A spec declares: theme name, grid size,
+`rooms` (rect perimeters become walls), extra `walls` segments, `doors`
+(carved openings, rendered as arches), `windows`, furniture, rugs, start,
+goal, npcs, exactly 3 tokens, optional traps/hidingSpots/decoyItems/summonNpc,
+plus a `relax` config and dialog strings. `buildLevel()` computes wall tiles
+and **throws at load** if the goal/tokens/hiding spots are unreachable from
+start, a door isn't on a wall, a decoy source is missing, etc.
 
-## Game Mechanics
+Wall render heights are automatic (camera-aware): floor behind only → tall
+back wall; floor in front only → low front lip; floor both sides → mid
+divider; neither → corner post.
 
-- Tap tiles to move Mom along A* path (speed: 11.2 grid units/sec)
-- Dog: avoid sound radius (pulsing red circle)
-- Toddler: avoid vision cone (green triangle, patrolling)
-- Husband: avoid vision cone (orange triangle) — distract with decoy throw
-- Squeaky toys (level 4): trigger on step → caught
-- Hiding spots (level 2): entering one makes Mom invisible to vision cones
-- Decoys: pick up from glowing furniture → throw to lure target NPC
+## NPC Types (`NPC_PARAMS` in constants.ts)
 
-## Relax / Win Scene
+- **Dog** — sound radius 4.6 tiles, sleeps (Zzz) until lured.
+- **Cat** — small radius 3.1, strolls between nap spots with long pauses.
+- **Toddler** — vision cone 65°, range 6.6, quick patrols (green cone).
+- **Husband** — narrow cone 43°, range 8.6, slow patrols (orange cone).
+- Detection is **suspicion-based**: Mom must stay exposed `SUSPICION_SECS`
+  (0.35s) before a catch — a "!" pops and the cone flushes red first.
+- Decoys lure their `targetNpc` to the thrown tile for `LURE_INVESTIGATE_SECS`.
 
-Two modes controlled by `RELAX_DATA[levelId].sceneMode`:
+## Relax / Win Scenes
 
-- **"3d"** (Level 1): `Game.enterRelaxScene()` builds interactive 3D scene. Mom walks to couch via 7-phase sit animation. Clickable items: wine glass (sip animation + "Momma needed her bottle"), cheese (eat animation + "That's some Goud-a cheese!"), TV (flash). Wine bottle sits next to glass on side table.
-- **"overlay"** (Levels 2-5): Semi-transparent emoji grid overlay. Click emojis for feedback text.
+Every level ends in a 3D relax scene driven by its `relax` spec:
+`{ pose, prop, particles, quote, seat, face, seatHeight }`.
 
-Timing: momQuote appears 200ms after relax starts; Next button after 6s (`RELAX_BUTTON_DELAY_MS`).
+- Poses: `sit` (couch/chair/stool), `soak` (bathtub, legs hidden), `lounge`
+  (beanbag recline). Choreography: walk → turn → settle (eased) → ambient loop
+  with breathing + camera drift + dimmed key light + warm spotlight.
+- Props (`RelaxDirector` registry): wine, coffee, book, bath (duck), phone,
+  chocolate, headphones, teapot, package, cheese. Tapping a prop plays a use
+  animation and floats a quip from `PROP_FEEDBACK` in dialog.ts.
+- Particles loop from the seat: hearts/steam/bubbles/notes/zzz/sparkles.
+- Level 15 additionally fires confetti.
 
-## Furniture System
+## Themes
 
-Furniture defined in `levels.ts` as `{ x, z, w, h, label, col, shape, rot? }`:
-- `x, z`: top-left grid tile. `w, h`: tile dimensions.
-- `shape`: one of 44+ FurnitureShape values (see `LevelTypes.ts`).
-- `rot`: optional rotation in radians (`g.rotation.y = f.rot`).
-- `label`: used by `enterRelaxScene()` to find couch/coffeeTable/tv/sideTable.
-- Furniture blocks tiles (lines 216-221 in Game.ts), except `shape === "door"`.
-- All furniture meshes stored in `furnitureGroups[]` with `userData.label`.
-
-Built via `buildFurnitureShape()` — a large switch/case in Game.ts. To add a new shape:
-1. Add the name to the `FurnitureShape` union in `LevelTypes.ts`
-2. Add a `case` in `buildFurnitureShape()` in `Game.ts`
-3. Reference it in a level's furniture array in `levels.ts`
-
-## Audio
-
-Drop `.mp3` files into `public/assets/audio/`. `AudioManager.play("key")` silently skips if file not present.
-
-Sound keys: `footstep-soft`, `squeak`, `caught-mommy`, `caught-dog`, `caught-husband`, `success` (→ success-confetti.mp3), `decoy-throw`, `ambient-hum`, `mom-sigh`.
+`src/world/themes.ts` — one palette per level (sky gradient stops, plinth,
+floor pair, wall trio, rug pair, wood/fabric/metal families, accent, light
+tints, Mom's outfit, HUD text color). The sky is a CSS gradient behind a
+transparent WebGL canvas. The accent color marks everything interactive:
+goal ring, tap ripples, tokens' glow, decoy markers.
 
 ## Key Constants (`src/utils/constants.ts`)
 
 ```
-TILE_SIZE = 0.25     TILE_H = 0.15        SNEAK_SPEED = 11.2
-DOG_SOUND_RADIUS = 8.8
-TODDLER_CONE_RANGE/ANGLE/SPEED = 14.0 / π/3 / 4.8
-HUSBAND_CONE_RANGE/ANGLE/SPEED = 16.0 / π/4.5 / 2.8
-CAUGHT_DELAY_MS = 500    INTRO_ZOOM_SECS = 2.0
-PICKUP_RANGE = 5.6       RELAX_BUTTON_DELAY_MS = 6000
+TILE_SIZE = 0.25      FLOOR_TOP = 0.06     MOM_SPEED = 6.8 (grid units/s)
+WALL_TALL/MID/LIP = 0.92 / 0.38 / 0.13
+SUSPICION_SECS = 0.35    LURE_INVESTIGATE_SECS = 3.2
+PICKUP_RANGE = 2.6       TOKEN_RANGE = 0.85
+INTRO_HOLD/ZOOM = 1.1 / 2.1s    WIN_ZOOM_SECS = 1.7
 ```
 
 ## Non-obvious Conventions
 
-- **Game.ts owns all Three.js objects.** React never touches Three directly.
-- **`Game.handleTap()`** returns `"thrown"` when a decoy was thrown (so `GameView` can call `throwDecoy()`).
-- **Detection delays** (caught/won) are applied inside `Game.ts` via `setTimeout` before invoking callbacks — do not add extra delays in React.
-- **All NPC meshes** stored in `npcs[]` array in `Game.ts`, updated each frame in `updateNpcs()`.
-- **Intro speech bubble** uses `getMomScreenPos()` which projects mom's base position then offsets 80px up in screen-space (avoids isometric horizontal shift from world-space Y offset).
-- **Furniture group positions** are computed as center of the tile footprint: `centerX = (f.x + f.w/2 - 0.5 - cx) * TILE_SIZE`.
-- **`cx`/`cz`** = grid center (`W/2 - 0.5`, `H/2 - 0.5`), used to center the world at origin.
-- **Relax click detection** uses raycasting with invisible hitbox spheres (opacity=0, depthWrite=false) for small objects like wine glasses.
-- **Dog thought bubble** contains a canvas-drawn bone sprite with `depthTest: false` and `renderOrder: 1` to render on top of the bubble sphere.
+- **Game.ts owns all Three.js objects.** React never touches Three directly;
+  it talks through `GameCallbacks` + a small public API (`pickUpItem`,
+  `setThrowMode`, `getMomScreenPos`, `debugWarp`/`debugTapTile` in dev).
+- **Angles:** math heading = `atan2(dz,dx)` everywhere in AI/detection;
+  convert to model yaw with `headingToYaw()`. `relax.face` is a raw
+  `rotation.y` yaw.
+- **Furniture rot** is quarter-turns (0–3); the factory swaps the local
+  footprint for odd rotations, so builders always see un-rotated `lw × lh`.
+- **Materials are cached by color** (`mat()` in helpers). Anything that
+  animates color/opacity must use `liveMat()` instead.
+- **Input is pointer-events on the canvas** (tap/pinch/pan/wheel) handled
+  inside Game — the React layer only renders overlay buttons.
+- **Headless testing:** in dev, `window.__game` exposes the Game instance;
+  rAF throttling makes game time run slower than wall time under headless
+  Chromium — wait on `__game.state`, not timeouts.
+
+## Audio
+
+Drop `.mp3` files into `public/assets/audio/`; playback silently skips missing
+files. Keys: footstep-soft, squeak, caught-mommy, caught-dog, caught-husband,
+success (success-confetti.mp3), decoy-throw, ambient-hum, mom-sigh, token-pickup.

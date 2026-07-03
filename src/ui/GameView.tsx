@@ -1,66 +1,57 @@
-import { useEffect, useRef, useCallback, useState } from "react";
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Game } from "../engine/Game";
 import { useGameStore } from "../state/gameStore";
+import { useProgressStore } from "../state/progressStore";
 import { LEVELS } from "../world/levels";
-import { INTRO_QUOTES } from "../world/introData";
-import { RELAX_DATA } from "../world/relaxData";
-import { LEVEL1_TUTORIAL } from "../world/tutorialData";
-import { AudioManager } from "../engine/AudioManager";
-import { RELAX_BUTTON_DELAY_MS } from "../utils/constants";
+import { getTheme } from "../world/themes";
+import { RELAX_QUOTE_DELAY_MS, RELAX_BUTTON_DELAY_MS } from "../utils/constants";
 import { HUD } from "./HUD";
 
-interface ClickFeedback {
-  text: string;
-  x: number;
-  y: number;
-  key: number;
-}
+interface Feedback { text: string; x: number; y: number; key: number }
 
 export function GameView() {
   const mountRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Game | null>(null);
 
-  const levelIdx    = useGameStore((s) => s.levelIdx);
-  const decoyMode   = useGameStore((s) => s.decoyMode);
-  const inventory   = useGameStore((s) => s.inventory);
+  const levelIdx = useGameStore((s) => s.levelIdx);
+  const throwMode = useGameStore((s) => s.throwMode);
   const introActive = useGameStore((s) => s.introActive);
   const relaxActive = useGameStore((s) => s.relaxActive);
+  const tokens = useGameStore((s) => s.tokens);
+  const setScreen = useGameStore((s) => s.setScreen);
   const setCaughtLine = useGameStore((s) => s.setCaughtLine);
-  const setWinText    = useGameStore((s) => s.setWinText);
-  const setScreen     = useGameStore((s) => s.setScreen);
+  const setTokens = useGameStore((s) => s.setTokens);
+  const setHeldItem = useGameStore((s) => s.setHeldItem);
+  const setThrowMode = useGameStore((s) => s.setThrowMode);
   const setNearPickup = useGameStore((s) => s.setNearPickup);
-  const throwDecoyFn  = useGameStore((s) => s.throwDecoy);
   const setIntroActive = useGameStore((s) => s.setIntroActive);
   const setRelaxActive = useGameStore((s) => s.setRelaxActive);
-  const startLevel     = useGameStore((s) => s.startLevel);
+  const startLevel = useGameStore((s) => s.startLevel);
+  const markComplete = useProgressStore((s) => s.markComplete);
 
+  const [won, setWon] = useState(false);
+  const [momPos, setMomPos] = useState<{ x: number; y: number } | null>(null);
   const [bubbleFading, setBubbleFading] = useState(false);
-  const [momScreenPos, setMomScreenPos] = useState<{ x: number; y: number } | null>(null);
-  const [tutorialStep, setTutorialStep] = useState(0);
-  const [tutorialFading, setTutorialFading] = useState(false);
-  const decoyModeRef = useRef(decoyMode);
-  decoyModeRef.current = decoyMode;
-  const throwDecoyRef = useRef(throwDecoyFn);
-  throwDecoyRef.current = throwDecoyFn;
-
-  // Relaxation state
-  const [consumed, setConsumed] = useState<Set<string>>(new Set());
-  const [feedbacks, setFeedbacks] = useState<ClickFeedback[]>([]);
-  const [showNextBtn, setShowNextBtn] = useState(false);
-  const [relaxQuoteVisible, setRelaxQuoteVisible] = useState(false);
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [quoteVisible, setQuoteVisible] = useState(false);
+  const [starsVisible, setStarsVisible] = useState(false);
+  const [buttonsVisible, setButtonsVisible] = useState(false);
   const feedbackKey = useRef(0);
 
+  const level = LEVELS[levelIdx];
+  const theme = getTheme(level.theme);
+  const isLast = levelIdx >= LEVELS.length - 1;
+
+  // ── Game lifecycle ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mountRef.current) return;
     const el = mountRef.current;
+    setWon(false);
     setBubbleFading(false);
-    setTutorialStep(0);
-    setTutorialFading(false);
-    setConsumed(new Set());
     setFeedbacks([]);
-    setShowNextBtn(false);
-    setRelaxQuoteVisible(false);
+    setQuoteVisible(false);
+    setStarsVisible(false);
+    setButtonsVisible(false);
 
     let rafId: number;
     const tryInit = () => {
@@ -69,39 +60,36 @@ export function GameView() {
         rafId = requestAnimationFrame(tryInit);
         return;
       }
-      const level = LEVELS[levelIdx];
-      const game = new Game(el, level, {
-        onCaught: (line) => { setCaughtLine(line); setScreen("caught"); },
-        onWon: (text)   => { setWinText(text); },
-        onNearPickup: (itemName) => setNearPickup(itemName),
-      });
-      // if (level.id === 1) game.setIntroPaused(true); // tutorial disabled for dev
-      game.setIntroCompleteCallback(() => {
-        setBubbleFading(true);
-        setTimeout(() => setIntroActive(false), 600);
-      });
-      game.setDeferredTapHandler((x, y) => {
-        const result = game.handleTap(x, y, decoyModeRef.current);
-        if (result === "thrown") throwDecoyRef.current();
-      });
-      game.setRelaxZoomCallback(() => {
-        setRelaxActive(true);
-        AudioManager.preload(["mom-sigh"]);
-        // Delay sigh until after the sit + head settle phases (~2.6s into the animation)
-        setTimeout(() => AudioManager.play("mom-sigh"), 2800);
-        // Enter 3D relax scene for levels that support it
-        const rd = RELAX_DATA[level.id];
-        if (rd?.sceneMode === "3d") {
-          game.enterRelaxScene();
-        }
-      });
-      game.setRelaxClickCallback((itemId, feedback, screenX, screenY) => {
-        feedbackKey.current++;
-        const fb: ClickFeedback = { text: feedback, x: screenX, y: screenY - 30, key: feedbackKey.current };
-        setFeedbacks(prev => [...prev, fb]);
-        setTimeout(() => {
-          setFeedbacks(prev => prev.filter(f => f.key !== fb.key));
-        }, 1200);
+      const lvl = LEVELS[levelIdx];
+      const game = new Game(el, lvl, {
+        onIntroDone: () => {
+          setBubbleFading(true);
+          setTimeout(() => useGameStore.getState().setIntroActive(false), 600);
+        },
+        onCaught: (line) => {
+          setCaughtLine(line);
+          setScreen("caught");
+        },
+        onWon: (tk) => {
+          setWon(true);
+          markComplete(lvl.id, tk);
+        },
+        onRelaxStarted: () => setRelaxActive(true),
+        onToken: (count) => setTokens(count),
+        onNearPickup: (item) => setNearPickup(item),
+        onDecoyThrown: () => {
+          setHeldItem(null);
+          setThrowMode(false);
+        },
+        onRelaxFeedback: (text, x, y) => {
+          feedbackKey.current++;
+          const fb = { text, x, y, key: feedbackKey.current };
+          setFeedbacks((prev) => [...prev, fb]);
+          setTimeout(
+            () => setFeedbacks((prev) => prev.filter((f) => f.key !== fb.key)),
+            1300,
+          );
+        },
       });
       gameRef.current = game;
     };
@@ -114,453 +102,201 @@ export function GameView() {
     };
   }, [levelIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Track Mom's screen position during intro for speech bubble placement
+  // keep Game's throw mode in sync
   useEffect(() => {
-    if (!introActive) { setMomScreenPos(null); return; }
+    gameRef.current?.setThrowMode(throwMode);
+  }, [throwMode]);
+
+  // track Mom for the intro speech bubble
+  useEffect(() => {
+    if (!introActive) { setMomPos(null); return; }
     let id: number;
     const tick = () => {
-      const game = gameRef.current;
-      if (game) setMomScreenPos(game.getMomScreenPos());
+      if (gameRef.current) setMomPos(gameRef.current.getMomScreenPos());
       id = requestAnimationFrame(tick);
     };
     id = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(id);
   }, [introActive]);
 
-  // When relaxActive turns on, start timers for quote and button
+  // relax overlay reveal sequence
   useEffect(() => {
     if (!relaxActive) return;
-    const q = setTimeout(() => setRelaxQuoteVisible(true), 200);
-    const b = setTimeout(() => setShowNextBtn(true), RELAX_BUTTON_DELAY_MS);
-    return () => { clearTimeout(q); clearTimeout(b); };
+    const q = setTimeout(() => setQuoteVisible(true), RELAX_QUOTE_DELAY_MS);
+    const s = setTimeout(() => setStarsVisible(true), RELAX_QUOTE_DELAY_MS + 1100);
+    const b = setTimeout(() => setButtonsVisible(true), RELAX_BUTTON_DELAY_MS);
+    return () => { clearTimeout(q); clearTimeout(s); clearTimeout(b); };
   }, [relaxActive]);
 
-  // When inventory changes, tell Game which item is currently held
-  useEffect(() => {
-    const game = gameRef.current;
-    if (!game) return;
-    const level = LEVELS[levelIdx];
-    if (inventory.length > 0) {
-      const def = level.decoyItems?.find((d) => d.itemName === inventory[0]);
-      game.setDecoyItem(def ?? null);
-    } else {
-      game.setDecoyItem(null);
-    }
-  }, [inventory, levelIdx]);
-
-  const relaxActiveRef = useRef(relaxActive);
-  relaxActiveRef.current = relaxActive;
-
-  const handleInput = useCallback(
-    (e: React.MouseEvent) => {
-      const game = gameRef.current;
-      if (!game) return;
-      // During 3D relax scene, forward clicks to the relax handler
-      if (relaxActiveRef.current) {
-        const level = LEVELS[useGameStore.getState().levelIdx];
-        const rd = RELAX_DATA[level.id];
-        if (rd?.sceneMode === "3d") {
-          game.handleRelaxClick(e.clientX, e.clientY);
-          return;
-        }
-      }
-      const result = game.handleTap(e.clientX, e.clientY, decoyMode);
-      if (result === "thrown") {
-        throwDecoyFn();
-      }
-    },
-    [decoyMode, throwDecoyFn]
-  );
-
-  const handleItemClick = useCallback((itemId: string, clickEmoji: string, consumable: boolean | undefined, e: React.MouseEvent) => {
-    if (consumed.has(itemId)) return;
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top;
-    feedbackKey.current++;
-    const fb: ClickFeedback = { text: clickEmoji, x, y, key: feedbackKey.current };
-    setFeedbacks(prev => [...prev, fb]);
-    setTimeout(() => {
-      setFeedbacks(prev => prev.filter(f => f.key !== fb.key));
-    }, 1200);
-    if (consumable) {
-      setConsumed(prev => new Set(prev).add(itemId));
-    }
-  }, [consumed]);
-
-  const level = LEVELS[levelIdx];
-  const quote = INTRO_QUOTES[level.id] ?? "";
-  const isLast = levelIdx >= LEVELS.length - 1;
-  const relaxData = RELAX_DATA[level.id];
+  const sky = `linear-gradient(168deg, ${theme.sky[0]} 0%, ${theme.sky[1]} 55%, ${theme.sky[2]} 100%)`;
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden", background: "#000" }}>
-      <div
-        ref={mountRef}
-        onClick={handleInput}
-        style={{ width: "100%", height: "100%", touchAction: "none" }}
-      />
+    <div style={{
+      width: "100%", height: "100%", position: "relative", overflow: "hidden",
+      background: sky,
+    }}>
+      <style>{`
+        @keyframes smFadeUp {
+          from { opacity:0; transform:translateY(14px); }
+          to   { opacity:1; transform:translateY(0); }
+        }
+        @keyframes smBubbleIn {
+          from { opacity:0; transform:translate(-50%,-100%) scale(0.85); }
+          to   { opacity:1; transform:translate(-50%,-100%) scale(1); }
+        }
+        @keyframes smFloatUp {
+          from { opacity:1; transform:translate(-50%,0); }
+          to   { opacity:0; transform:translate(-50%,-46px); }
+        }
+        @keyframes smStarPop {
+          0%   { opacity:0; transform:scale(0.2) rotate(-30deg); }
+          70%  { opacity:1; transform:scale(1.25) rotate(6deg); }
+          100% { opacity:1; transform:scale(1) rotate(0); }
+        }
+      `}</style>
 
-      {/* HUD — hidden during intro and relaxation */}
-      {!introActive && !relaxActive && <HUD />}
+      {/* soft vignette over the diorama */}
+      <div style={{
+        position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1,
+        background: "radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(30,16,40,0.22) 100%)",
+      }} />
 
-      {/* Intro speech bubble overlay */}
+      <div ref={mountRef} style={{ position: "absolute", inset: 0, touchAction: "none" }} />
+
+      {!introActive && !won && <HUD gameRef={gameRef} />}
+
+      {/* ── Intro overlay ── */}
       {introActive && (
         <div style={{
-          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-          pointerEvents: "none",
-          opacity: bubbleFading ? 0 : 1,
-          transition: "opacity 0.6s ease-out",
+          position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2,
+          opacity: bubbleFading ? 0 : 1, transition: "opacity 0.6s ease-out",
+          fontFamily: "Georgia, serif",
         }}>
-          <style>{`
-            @keyframes bubbleIn {
-              from { opacity:0; transform:translateY(10px) scale(0.9); }
-              to   { opacity:1; transform:translateY(0) scale(1); }
-            }
-            @keyframes tutorialFadeIn {
-              0%   { opacity:0; transform:translateY(12px) scale(0.95); }
-              100% { opacity:1; transform:translateY(0) scale(1); }
-            }
-            @keyframes tutorialFadeOut {
-              0%   { opacity:1; transform:translateY(0) scale(1); }
-              100% { opacity:0; transform:translateY(-12px) scale(0.95); }
-            }
-          `}</style>
-
-          {/* Level label — top center */}
-          <div style={{
-            position: "absolute", top: "6%", left: 0, right: 0,
-            display: "flex", flexDirection: "column", alignItems: "center",
-          }}>
+          <div style={{ position: "absolute", top: "7%", left: 0, right: 0, textAlign: "center" }}>
             <p style={{
-              fontFamily: "Georgia, serif", fontSize: 10, letterSpacing: 4,
-              color: "#FFF", opacity: 0.4, textTransform: "uppercase",
-              margin: "0 0 6px", animation: "bubbleIn 0.5s ease-out",
+              margin: "0 0 6px", fontSize: 11, letterSpacing: 5, textTransform: "uppercase",
+              color: theme.uiText, opacity: 0.55, animation: "smFadeUp 0.6s ease-out",
             }}>
-              Level {level.id}
+              Level {level.id} · {level.name}
             </p>
             <p style={{
-              fontFamily: "Georgia, serif", fontSize: 16, fontStyle: "italic",
-              color: "#FFF", opacity: 0.7, margin: 0,
-              animation: "bubbleIn 0.5s ease-out 0.1s both",
+              margin: 0, fontSize: 15, fontStyle: "italic", color: theme.uiText,
+              opacity: 0.75, animation: "smFadeUp 0.6s ease-out 0.15s both",
             }}>
-              {level.name}
+              {level.subtitle}
             </p>
           </div>
 
-          {/* Level 1 tutorial cards — commented out for dev iteration
-          {level.id === 1 && tutorialStep < LEVEL1_TUTORIAL.length ? (
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                if (tutorialFading) return;
-                setTutorialFading(true);
-                setTimeout(() => {
-                  const next = tutorialStep + 1;
-                  setTutorialStep(next);
-                  setTutorialFading(false);
-                  if (next >= LEVEL1_TUTORIAL.length) {
-                    gameRef.current?.setIntroPaused(false);
-                  }
-                }, 1800 + 750);
-              }}
-              style={{
-                position: "absolute", bottom: "12%", left: "50%",
-                transform: "translateX(-50%)",
-                pointerEvents: "auto",
-              }}
-            >
-              <div key={`${tutorialStep}-${tutorialFading}`} style={{
-                background: "rgba(255,255,255,0.95)",
-                borderRadius: 16,
-                padding: "16px 24px",
-                maxWidth: 280,
-                textAlign: "center",
-                animation: tutorialFading
-                  ? "tutorialFadeOut 1.8s ease-in-out forwards"
-                  : "tutorialFadeIn 1.8s ease-in-out",
+          {momPos && (
+            <div style={{
+              position: "absolute", left: momPos.x, top: momPos.y,
+              transform: "translate(-50%, -100%)",
+              animation: "smBubbleIn 0.5s ease-out 0.4s both",
+            }}>
+              <div style={{
+                position: "relative", background: "rgba(255,252,246,0.96)",
+                borderRadius: 16, padding: "13px 20px", maxWidth: 280,
+                boxShadow: "0 6px 24px rgba(40,20,50,0.18)",
               }}>
-                <p style={{ fontSize: 28, margin: "0 0 8px" }}>
-                  {LEVEL1_TUTORIAL[tutorialStep].emoji}
-                </p>
                 <p style={{
-                  fontFamily: "Georgia, serif", fontSize: 15,
-                  color: "#2A1A2A", margin: "0 0 12px",
-                  lineHeight: 1.5,
+                  margin: 0, fontSize: 16, fontStyle: "italic", lineHeight: 1.45,
+                  color: "#3A2A3E", textAlign: "center",
                 }}>
-                  {LEVEL1_TUTORIAL[tutorialStep].text}
+                  {level.intro}
                 </p>
-                <p style={{
-                  fontFamily: "Georgia, serif", fontSize: 11,
-                  color: "#999", margin: 0, letterSpacing: 1,
-                }}>
-                  TAP TO CONTINUE
-                </p>
+                <div style={{
+                  position: "absolute", bottom: -9, left: "50%", marginLeft: -9,
+                  width: 0, height: 0,
+                  borderLeft: "9px solid transparent", borderRight: "9px solid transparent",
+                  borderTop: "9px solid rgba(255,252,246,0.96)",
+                }} />
               </div>
             </div>
-          ) : ( */}
-          {(
-            /* Speech bubble — positioned above Mom's head */
-            momScreenPos && (
-              <div style={{
-                position: "absolute",
-                left: momScreenPos.x,
-                top: momScreenPos.y,
-                transform: "translate(-50%, -100%)",
-                display: "flex", flexDirection: "column", alignItems: "center",
-                animation: "bubbleIn 0.4s ease-out 0.3s both",
-              }}>
-                <div style={{
-                  position: "relative",
-                  background: "rgba(255,255,255,0.95)",
-                  borderRadius: 18,
-                  padding: "16px 26px",
-                  maxWidth: 320,
-                }}>
-                  <p style={{
-                    fontFamily: "Georgia, serif", fontSize: 18,
-                    color: "#2A1A2A", margin: 0, textAlign: "center",
-                    fontStyle: "italic", lineHeight: 1.5,
-                  }}>
-                    {quote}
-                  </p>
-                  {/* Triangle pointer */}
-                  <div style={{
-                    position: "absolute", bottom: -10, left: "50%", marginLeft: -10,
-                    width: 0, height: 0,
-                    borderLeft: "10px solid transparent",
-                    borderRight: "10px solid transparent",
-                    borderTop: "10px solid rgba(255,255,255,0.95)",
-                  }} />
-                </div>
-              </div>
-            )
           )}
         </div>
       )}
 
-      {/* Relaxation overlay — on top of zoomed-in 3D scene */}
-      {relaxActive && relaxData && (
-        relaxData.sceneMode === "3d" ? (
-          /* ── 3D relax scene: minimal overlay with floating feedback + buttons ── */
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-            pointerEvents: "none",
-            fontFamily: "Georgia, serif", color: "#FFF",
-            userSelect: "none",
+      {/* ── Relax overlay (win) ── */}
+      {relaxActive && (
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2,
+          fontFamily: "Georgia, serif", color: "#FFF9F0",
+        }}>
+          <p style={{
+            position: "absolute", top: "9%", left: 0, right: 0, margin: 0,
+            textAlign: "center", fontSize: 22, fontStyle: "italic",
+            letterSpacing: 1, padding: "0 32px",
+            textShadow: "0 2px 14px rgba(30,10,40,0.45)",
+            opacity: quoteVisible ? 0.95 : 0,
+            transition: "opacity 1.6s ease-in",
           }}>
-            <style>{`
-              @keyframes relaxFadeIn {
-                from { opacity:0; transform:translateY(12px); }
-                to   { opacity:1; transform:translateY(0); }
-              }
-              @keyframes floatUp {
-                from { opacity:1; transform:translateY(0); }
-                to   { opacity:0; transform:translateY(-40px); }
-              }
-              @keyframes buttonReveal {
-                from { opacity:0; transform:translateY(8px); }
-                to   { opacity:1; transform:translateY(0); }
-              }
-            `}</style>
+            {level.relax.quote}
+          </p>
 
-            {/* Mom's quote — shown briefly at top */}
-            <p style={{
-              position: "absolute", top: "8%", left: 0, right: 0,
-              fontSize: 22, fontStyle: "italic", margin: 0,
-              opacity: relaxQuoteVisible ? 0.8 : 0,
-              transition: "opacity 1.5s ease-in",
-              textAlign: "center", padding: "0 32px",
-              letterSpacing: 1,
-              textShadow: "0 2px 8px rgba(0,0,0,0.6)",
-            }}>
-              {relaxData.momQuote}
-            </p>
-
-            {/* Floating click feedback */}
-            {feedbacks.map(fb => (
-              <div key={fb.key} style={{
-                position: "fixed",
-                left: fb.x,
-                top: fb.y,
-                transform: "translateX(-50%)",
-                fontSize: 15,
-                fontStyle: "italic",
-                color: "rgba(255,255,255,0.95)",
-                pointerEvents: "none",
-                animation: "floatUp 1.2s ease-out forwards",
-                whiteSpace: "nowrap",
-                textShadow: "0 1px 4px rgba(0,0,0,0.5)",
-              }}>
-                {fb.text}
-              </div>
-            ))}
-
-            {/* Next level / Menu buttons */}
+          {/* stars */}
+          {starsVisible && (
             <div style={{
-              position: "absolute", bottom: 40, left: 0, right: 0,
-              display: "flex", gap: 12, justifyContent: "center",
-              alignItems: "center", flexDirection: "column",
-              pointerEvents: "auto",
+              position: "absolute", top: "17%", left: 0, right: 0,
+              display: "flex", justifyContent: "center", gap: 14,
             }}>
-              {showNextBtn && (
-                <button
-                  onClick={() => isLast ? setScreen("menu") : startLevel(levelIdx + 1)}
-                  style={{
-                    ...relaxBtnStyle("rgba(255,255,255,0.12)"),
-                    animation: "buttonReveal 0.8s ease-out both",
-                  }}
-                >
-                  {isLast ? "You Win!" : "Next Level"}
-                </button>
-              )}
+              {[0, 1, 2].map((i) => (
+                <span key={i} style={{
+                  fontSize: 30,
+                  filter: i < tokens ? "drop-shadow(0 0 8px rgba(255,214,120,0.8))" : "none",
+                  color: i < tokens ? "#FFD678" : "rgba(255,255,255,0.28)",
+                  animation: `smStarPop 0.5s ease-out ${i * 0.28}s both`,
+                }}>
+                  ★
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* floating prop feedback */}
+          {feedbacks.map((fb) => (
+            <div key={fb.key} style={{
+              position: "fixed", left: fb.x, top: fb.y,
+              fontSize: 15, fontStyle: "italic", whiteSpace: "nowrap",
+              textShadow: "0 1px 6px rgba(30,10,40,0.6)",
+              animation: "smFloatUp 1.3s ease-out forwards",
+            }}>
+              {fb.text}
+            </div>
+          ))}
+
+          <div style={{
+            position: "absolute", bottom: 36, left: 0, right: 0,
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+            pointerEvents: "auto",
+          }}>
+            {buttonsVisible && (
               <button
-                onClick={() => setScreen("menu")}
+                onClick={() => (isLast ? setScreen("menu") : startLevel(levelIdx + 1))}
                 style={{
-                  ...relaxBtnStyle("transparent"),
-                  opacity: 0.3, fontSize: 11,
-                  animation: "relaxFadeIn 0.6s ease-out 1.5s both",
+                  background: "rgba(255,252,246,0.92)", border: "none",
+                  borderRadius: 24, padding: "13px 38px", cursor: "pointer",
+                  fontSize: 15, fontFamily: "Georgia, serif", color: "#3A2A3E",
+                  letterSpacing: 1, boxShadow: "0 6px 24px rgba(30,10,40,0.3)",
+                  animation: "smFadeUp 0.7s ease-out both",
                 }}
               >
-                Menu
+                {isLast ? "🎉  You Did It, Mom" : "Next Level  →"}
               </button>
-            </div>
+            )}
+            <button
+              onClick={() => setScreen("menu")}
+              style={{
+                background: "transparent", border: "none", cursor: "pointer",
+                color: "rgba(255,252,246,0.5)", fontSize: 12,
+                fontFamily: "Georgia, serif", letterSpacing: 2,
+                animation: "smFadeUp 0.7s ease-out 1.6s both",
+              }}
+            >
+              MENU
+            </button>
           </div>
-        ) : (
-          /* ── Emoji overlay relax (levels 2-5) ── */
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-            display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center",
-            background: "rgba(0,0,0,0.35)",
-            fontFamily: "Georgia, serif", color: "#FFF",
-            userSelect: "none",
-          }}>
-            <style>{`
-              @keyframes relaxFadeIn {
-                from { opacity:0; transform:translateY(12px); }
-                to   { opacity:1; transform:translateY(0); }
-              }
-              @keyframes floatUp {
-                from { opacity:1; transform:translateY(0); }
-                to   { opacity:0; transform:translateY(-40px); }
-              }
-              @keyframes gentleBob {
-                0%, 100% { transform:translateY(0); }
-                50% { transform:translateY(-4px); }
-              }
-              @keyframes buttonReveal {
-                from { opacity:0; transform:translateY(8px); }
-                to   { opacity:1; transform:translateY(0); }
-              }
-            `}</style>
-
-            {/* Mom's relaxation quote */}
-            <p style={{
-              fontSize: 22, fontStyle: "italic", margin: "0 0 40px",
-              opacity: relaxQuoteVisible ? 0.8 : 0,
-              transition: "opacity 1.5s ease-in",
-              textAlign: "center", padding: "0 32px",
-              letterSpacing: 1,
-            }}>
-              {relaxData.momQuote}
-            </p>
-
-            {/* Interactive items — no labels, just objects that react */}
-            <div style={{
-              display: "flex", gap: 24, flexWrap: "wrap",
-              justifyContent: "center", alignItems: "center",
-              padding: "0 24px", maxWidth: 340,
-            }}>
-              {relaxData.items.map((item, i) => {
-                const isConsumed = consumed.has(item.id);
-                return (
-                  <div
-                    key={item.id}
-                    onClick={(e) => handleItemClick(item.id, item.clickEmoji, item.consumable, e)}
-                    style={{
-                      fontSize: 52,
-                      cursor: isConsumed ? "default" : "pointer",
-                      opacity: isConsumed ? 0 : 1,
-                      transition: "opacity 0.8s ease-out, transform 0.15s ease",
-                      animation: `relaxFadeIn 0.6s ease-out ${0.4 + i * 0.15}s both, gentleBob ${2.5 + i * 0.3}s ease-in-out ${i * 0.5}s infinite`,
-                      pointerEvents: isConsumed ? "none" : "auto",
-                    }}
-                    onMouseDown={(e) => {
-                      if (!isConsumed) (e.currentTarget as HTMLElement).style.transform = "scale(1.2)";
-                    }}
-                    onMouseUp={(e) => {
-                      (e.currentTarget as HTMLElement).style.transform = "";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.transform = "";
-                    }}
-                  >
-                    {item.emoji}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Floating click feedback */}
-            {feedbacks.map(fb => (
-              <div key={fb.key} style={{
-                position: "fixed",
-                left: fb.x,
-                top: fb.y,
-                transform: "translateX(-50%)",
-                fontSize: 13,
-                fontStyle: "italic",
-                color: "rgba(255,255,255,0.9)",
-                pointerEvents: "none",
-                animation: "floatUp 1.2s ease-out forwards",
-                whiteSpace: "nowrap",
-              }}>
-                {fb.text}
-              </div>
-            ))}
-
-            {/* Next level / Menu buttons */}
-            <div style={{
-              position: "absolute", bottom: 40, left: 0, right: 0,
-              display: "flex", gap: 12, justifyContent: "center",
-              alignItems: "center", flexDirection: "column",
-            }}>
-              {showNextBtn && (
-                <button
-                  onClick={() => isLast ? setScreen("menu") : startLevel(levelIdx + 1)}
-                  style={{
-                    ...relaxBtnStyle("rgba(255,255,255,0.12)"),
-                    animation: "buttonReveal 0.8s ease-out both",
-                  }}
-                >
-                  {isLast ? "You Win!" : "Next Level"}
-                </button>
-              )}
-              <button
-                onClick={() => setScreen("menu")}
-                style={{
-                  ...relaxBtnStyle("transparent"),
-                  opacity: 0.3, fontSize: 11,
-                  animation: "relaxFadeIn 0.6s ease-out 1.5s both",
-                }}
-              >
-                Menu
-              </button>
-            </div>
-          </div>
-        )
+        </div>
       )}
     </div>
   );
-}
-
-function relaxBtnStyle(bg: string): CSSProperties {
-  return {
-    background: bg,
-    border: "1px solid rgba(255,255,255,0.15)",
-    borderRadius: 8, padding: "10px 28px",
-    color: "#FFF", cursor: "pointer", fontSize: 13,
-    fontFamily: "Georgia, serif",
-  };
 }
