@@ -195,6 +195,16 @@ export class RelaxDirector {
     if (kit.handItem && this.mom.handAnchor) {
       this.mom.handAnchor.add(kit.handItem);
     }
+    // headphones are worn, not held — move the band onto Mom's head
+    if (this.spec.prop === "headphones") {
+      const wear = kit.group.getObjectByName("headphonesWear");
+      if (wear) {
+        kit.group.remove(wear);
+        this.mom.head.add(wear);
+        wear.position.set(0, 0.015, 0);
+        wear.rotation.x = -0.12;
+      }
+    }
     // side items placed beside the seat, biased toward the camera
     kit.group.position.set(
       this.seatWorld.x + 0.18,

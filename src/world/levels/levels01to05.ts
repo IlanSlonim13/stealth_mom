@@ -173,7 +173,7 @@ export const level04: LevelSpec = {
   relax: {
     pose: "lounge", prop: "book", particles: "zzz",
     quote: "Chapter one. Again. Finally.",
-    seat: [26, 19], face: Math.PI / 4, seatHeight: 0.12,
+    seat: [26.5, 19.5], face: Math.PI / 4, seatHeight: 0.13,
   },
   intro: "If I can see her, she can see me.",
   winText: "They'll never know you were here.",

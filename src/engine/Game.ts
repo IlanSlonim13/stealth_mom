@@ -276,6 +276,7 @@ export class Game {
       const warn = gradientDisc(0.12, "#E8A054", 0.35);
       warn.position.y = 0.004;
       grp.add(body, head, beak, warn);
+      grp.userData.bodyMat = bodyMat;
       grp.rotation.y = ((x * 7 + z * 13) % 6) * 1.1;
       grp.position.set(this.wx(x), FLOOR_TOP, this.wz(z));
       this.scene.add(grp);
@@ -466,11 +467,7 @@ export class Game {
       if (dist2d(this.momPos.x, this.momPos.z, tr.x, tr.z) < 0.55) {
         tr.triggered = true;
         AudioManager.play("squeak");
-        tr.group.children.forEach((c) => {
-          const mesh = c as THREE.Mesh;
-          const mm = mesh.material as THREE.MeshLambertMaterial;
-          if (mm && "color" in mm && mm.transparent !== true) mm.color?.set("#E8425A");
-        });
+        (tr.group.userData.bodyMat as THREE.MeshLambertMaterial).color.set("#E8425A");
         this.effects.alertPop(tr.group.position.clone().add(new THREE.Vector3(0, 0.3, 0)));
         const summon = this.level.summonNpc;
         if (summon && !this.summoned) {

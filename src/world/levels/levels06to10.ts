@@ -80,7 +80,7 @@ export const level07: LevelSpec = {
   relax: {
     pose: "lounge", prop: "headphones", particles: "notes",
     quote: "Volume: 100%. World: 0%.",
-    seat: [25, 18], face: Math.PI / 4, seatHeight: 0.12,
+    seat: [25.5, 18.5], face: Math.PI / 4, seatHeight: 0.13,
   },
   intro: "One squeak and it's all over.",
   winText: "Not a single squeak. Legend.",
