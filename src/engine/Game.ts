@@ -69,6 +69,8 @@ export class Game {
   private summoned = false;
 
   private goalGroup!: THREE.Group;
+  private flames: THREE.Object3D[] = [];
+  private tvGlows: THREE.Mesh[] = [];
   private hidingTents: { x: number; z: number }[] = [];
   private decoySources = new Map<string, { def: DecoyItemDef; marker: THREE.Group; taken: boolean }>();
   private heldItem: DecoyItemDef | null = null;
@@ -192,6 +194,10 @@ export class Game {
 
     // characters + systems
     this.effects = new EffectsSystem(this.scene);
+    this.effects.startMotes(
+      lvl.grid.w * TILE_SIZE * 0.4,
+      lvl.grid.h * TILE_SIZE * 0.4,
+    );
     this.mom = buildMom(t);
     this.momPos = { x: lvl.start[0], z: lvl.start[1] };
     this.mom.group.position.set(this.wx(this.momPos.x), FLOOR_TOP, this.wz(this.momPos.z));
@@ -243,6 +249,10 @@ export class Game {
         this.wz(f.z + f.h / 2 - 0.5),
       );
       this.scene.add(grp);
+      const flame = grp.getObjectByName("fireplaceFlame");
+      if (flame) this.flames.push(flame);
+      const tvGlow = grp.getObjectByName("tvGlow");
+      if (tvGlow) this.tvGlows.push(tvGlow as THREE.Mesh);
 
       if (f.hasDecoy && f.label) {
         const def = this.level.decoyItems?.find((d) => d.sourceLabel === f.label);
@@ -598,6 +608,24 @@ export class Game {
       const icon = src.marker.children[1];
       icon.position.y = 0.52 + Math.sin(t * 2.2) * 0.03;
     }
+    // fireplace flames flicker
+    this.flames.forEach((f, i) => {
+      f.scale.setScalar(1 + Math.sin(t * 11 + i * 2.4) * 0.15);
+      f.rotation.y = t * 2 + i;
+    });
+    // tv static shimmer
+    for (const g of this.tvGlows) {
+      (g.material as THREE.MeshLambertMaterial).emissiveIntensity =
+        0.35 + Math.sin(t * 7) * 0.1 + Math.sin(t * 23) * 0.04;
+    }
+    // birds circle the plinth
+    const R = Math.max(this.level.grid.w, this.level.grid.h) * TILE_SIZE * 0.75;
+    this.scenery.birds.forEach((b, i) => {
+      const a = t * 0.12 + i * Math.PI;
+      b.position.set(Math.cos(a) * R, 0.9 + Math.sin(t * 0.7 + i) * 0.08, Math.sin(a) * R * 0.8);
+      b.rotation.y = -a;
+      b.scale.y = 0.8 + Math.sin(t * 9 + i) * 0.25;
+    });
   }
 
   private setState(s: GameState) {

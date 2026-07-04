@@ -85,6 +85,7 @@ const BUILDERS: Record<FurnitureShape, Builder> = {
       new THREE.MeshLambertMaterial({ color: "#31394A", emissive: new THREE.Color("#4A5468"), emissiveIntensity: 0.4 }),
     );
     glow.position.set(0, 0.24, 0.014);
+    glow.name = "tvGlow";
     grp.add(glow);
     return grp;
   },

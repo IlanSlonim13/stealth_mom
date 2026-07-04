@@ -19,6 +19,7 @@ export type WallKind = "tall" | "mid" | "lip" | "post";
 
 export class SceneryBuilder {
   readonly group = new THREE.Group();
+  readonly birds: THREE.Group[] = [];
   private cx: number;
   private cz: number;
 
@@ -30,6 +31,27 @@ export class SceneryBuilder {
     this.buildRugs();
     this.buildWalls();
     this.buildDoorArches();
+    this.buildBirds();
+  }
+
+  /** Two tiny birds slowly circling the diorama. */
+  private buildBirds() {
+    for (let i = 0; i < 2; i++) {
+      const bird = new THREE.Group();
+      const bodyCol = i === 0 ? "#F6F1E6" : shade(this.theme.accent, 0.3);
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 10), mat(bodyCol));
+      body.scale.z = 1.5;
+      const wingGeo = new THREE.ConeGeometry(0.016, 0.04, 3);
+      const wL = new THREE.Mesh(wingGeo, mat(bodyCol));
+      wL.rotation.z = Math.PI / 2;
+      wL.position.set(-0.028, 0.008, 0);
+      const wR = new THREE.Mesh(wingGeo, mat(bodyCol));
+      wR.rotation.z = -Math.PI / 2;
+      wR.position.set(0.028, 0.008, 0);
+      bird.add(body, wL, wR);
+      this.group.add(bird);
+      this.birds.push(bird);
+    }
   }
 
   wx(gx: number) { return (gx - this.cx) * TILE_SIZE; }

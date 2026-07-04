@@ -29,12 +29,52 @@ interface Emitter {
   active: boolean;
 }
 
+interface Mote {
+  sprite: THREE.Sprite;
+  vel: THREE.Vector3;
+  life: number;
+  ttl: number;
+}
+
 export class EffectsSystem {
   private particles: Particle[] = [];
   private emitters: Emitter[] = [];
+  private motes: Mote[] = [];
+  private moteBounds = { halfW: 1, halfH: 1 };
   private spriteCache = new Map<string, THREE.SpriteMaterial>();
 
   constructor(private scene: THREE.Scene) {}
+
+  /** Slow-drifting dust motes inside the room — quiet MV ambience. */
+  startMotes(halfW: number, halfH: number, count = 12) {
+    this.moteBounds = { halfW, halfH };
+    for (let i = 0; i < count; i++) this.spawnMote(true);
+  }
+
+  private spawnMote(randomLife = false) {
+    const mat = this.spriteMat("●", "#FFFFFF").clone();
+    mat.opacity = 0.1;
+    const sprite = new THREE.Sprite(mat);
+    const sc = 0.02 + Math.random() * 0.015;
+    sprite.scale.set(sc, sc, 1);
+    const { halfW, halfH } = this.moteBounds;
+    sprite.position.set(
+      (Math.random() * 2 - 1) * halfW,
+      0.15 + Math.random() * 0.55,
+      (Math.random() * 2 - 1) * halfH,
+    );
+    sprite.renderOrder = 5;
+    this.scene.add(sprite);
+    const ttl = 6 + Math.random() * 4;
+    this.motes.push({
+      sprite,
+      vel: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.04, 0.012, (Math.random() - 0.5) * 0.04,
+      ),
+      life: randomLife ? Math.random() * ttl : 0,
+      ttl,
+    });
+  }
 
   // ── sprite material cache ──────────────────────────────────────────────────
   private spriteMat(char: string, color: string): THREE.SpriteMaterial {
@@ -238,6 +278,21 @@ export class EffectsSystem {
 
   // ── frame update ───────────────────────────────────────────────────────────
   update(dt: number) {
+    for (let i = this.motes.length - 1; i >= 0; i--) {
+      const mo = this.motes[i];
+      mo.life += dt;
+      mo.sprite.position.addScaledVector(mo.vel, dt);
+      mo.sprite.position.x += Math.sin(mo.life * 0.8) * 0.01 * dt;
+      const t = mo.life / mo.ttl;
+      mo.sprite.material.opacity = 0.1 * Math.sin(Math.min(1, Math.max(0, t)) * Math.PI);
+      if (mo.life >= mo.ttl) {
+        this.scene.remove(mo.sprite);
+        mo.sprite.material.dispose();
+        this.motes.splice(i, 1);
+        this.spawnMote();
+      }
+    }
+
     for (const e of this.emitters) {
       if (!e.active) continue;
       e.timer += dt;
@@ -285,6 +340,11 @@ export class EffectsSystem {
       p.mat.dispose();
     }
     this.particles = [];
+    for (const mo of this.motes) {
+      this.scene.remove(mo.sprite);
+      mo.sprite.material.dispose();
+    }
+    this.motes = [];
     this.emitters = [];
     this.spriteCache.forEach((m) => {
       m.map?.dispose();
