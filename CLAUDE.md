@@ -17,9 +17,17 @@ npm run cap:sync     # sync web build to Android project
 npm run cap:open     # open Android Studio
 ```
 
-No tests or linting configured. TypeScript strict mode (`noEmit: true` — Vite bundles).
+No linting configured. TypeScript strict mode (`noEmit: true` — Vite bundles).
 Level layouts self-validate at module load (see Level Builder below) — a broken
-level throws immediately on boot.
+level throws immediately on boot. One extra check exists:
+
+```bash
+npx esbuild scripts/check-difficulty.mjs --bundle --format=esm --platform=node \
+  --outfile=/tmp/check-difficulty.mjs && node /tmp/check-difficulty.mjs
+```
+
+asserts every level's shortest start→goal path is threatened by at least one
+hazard (no safe beeline). Run it after editing any level layout.
 
 ## Architecture
 
@@ -28,7 +36,7 @@ level throws immediately on boot.
 | Rendering | Three.js (isometric orthographic camera, flat Lambert + pastel palettes) |
 | UI/Screens | React 18 + TypeScript |
 | State | Zustand (`src/state/gameStore.ts`, `src/state/progressStore.ts` — persisted) |
-| Audio | Howler.js (`src/engine/AudioManager.ts`, silent skip if files missing) |
+| Audio | Howler.js pool + procedural WebAudio fallback (`AudioManager.ts`, `SfxSynth.ts`) |
 | Pathfinding | A* (`src/pathfinding/Pathfinder.ts`) |
 | Mobile | Capacitor 6 (`capacitor.config.ts`) |
 | Build | Vite 6 with React plugin |
@@ -44,15 +52,17 @@ src/
 │   │                           (intro → play → caught | winZoom → relax),
 │   │                           camera, input (tap / pinch / pan / wheel)
 │   ├── SceneryBuilder.ts     — Diorama: plinth, vertex-colored floor, walls
-│   │                           with camera-aware heights, arches, windows, rugs
+│   │                           with camera-aware heights, arches, windows,
+│   │                           rugs, circling birds
 │   ├── FurnitureFactory.ts   — Registry of ~45 furniture shape builders
 │   ├── CharacterFactory.ts   — Rigs for Mom, dog, toddler, husband, cat
 │   ├── NpcSystem.ts          — Patrols, lures, chases, suspicion detection
-│   ├── EffectsSystem.ts      — Ripples, path dots, sparkles, confetti,
-│   │                           looping emitters (hearts/steam/bubbles/notes/zzz)
+│   ├── EffectsSystem.ts      — Ripples, path dots, sparkles, confetti, dust
+│   │                           motes, looping emitters (hearts/steam/bubbles/…)
 │   ├── RelaxDirector.ts      — Win-scene choreography + prop registry
 │   ├── helpers.ts            — mat/box/rbox/cyl/sphere, cones, discs, sprites
-│   └── AudioManager.ts       — Howler pool
+│   ├── AudioManager.ts       — Howler pool, falls back to SfxSynth
+│   └── SfxSynth.ts           — WebAudio synth for missing .mp3 assets
 ├── world/
 │   ├── types.ts              — LevelSpec (authored) / LevelData (compiled)
 │   ├── themes.ts             — 15 Monument Valley palettes (one per level)
@@ -114,6 +124,8 @@ divider; neither → corner post.
 - **Husband** — narrow cone 43°, range 8.6, slow patrols (orange cone).
 - Detection is **suspicion-based**: Mom must stay exposed `SUSPICION_SECS`
   (0.35s) before a catch — a "!" pops and the cone flushes red first.
+- **Walls block vision** (`NpcSystem.losClear`); door openings do not.
+  Sound radii (dog/cat) intentionally ignore walls.
 - Decoys lure their `targetNpc` to the thrown tile for `LURE_INVESTIGATE_SECS`.
 
 ## Relax / Win Scenes
@@ -168,6 +180,7 @@ INTRO_HOLD/ZOOM = 1.1 / 2.1s    WIN_ZOOM_SECS = 1.7
 
 ## Audio
 
-Drop `.mp3` files into `public/assets/audio/`; playback silently skips missing
-files. Keys: footstep-soft, squeak, caught-mommy, caught-dog, caught-husband,
+Drop `.mp3` files into `public/assets/audio/`; when a file is missing the
+AudioManager falls back to `SfxSynth` (procedural WebAudio blips), so the game
+is never silent. Keys: footstep-soft, squeak, caught-mommy, caught-dog, caught-husband,
 success (success-confetti.mp3), decoy-throw, ambient-hum, mom-sigh, token-pickup.

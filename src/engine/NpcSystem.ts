@@ -60,6 +60,7 @@ export class NpcSystem {
   npcs: NpcState[] = [];
   private cx: number;
   private cz: number;
+  private wallSet: Set<string>;
 
   constructor(
     private scene: THREE.Scene,
@@ -68,7 +69,21 @@ export class NpcSystem {
   ) {
     this.cx = level.grid.w / 2 - 0.5;
     this.cz = level.grid.h / 2 - 0.5;
+    this.wallSet = new Set(level.wallTiles.map(([x, z]) => `${x},${z}`));
     level.npcs.forEach((def) => this.spawn(def));
+  }
+
+  /** Walls block sight (doors are walkable openings, so they don't). */
+  private losClear(ax: number, az: number, bx: number, bz: number): boolean {
+    const d = Math.hypot(bx - ax, bz - az);
+    const steps = Math.max(1, Math.ceil(d / 0.4));
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const x = Math.round(ax + (bx - ax) * t);
+      const z = Math.round(az + (bz - az) * t);
+      if (this.wallSet.has(`${x},${z}`)) return false;
+    }
+    return true;
   }
 
   private wx(gx: number) { return (gx - this.cx) * TILE_SIZE; }
@@ -309,7 +324,8 @@ export class NpcSystem {
     if (npc.radius !== undefined) {
       exposed = dist2d(mom.x, mom.z, npc.pos.x, npc.pos.z) < npc.radius;
     } else if (npc.range !== undefined && npc.angle !== undefined && !momHidden) {
-      exposed = pointInCone(mom.x, mom.z, npc.pos.x, npc.pos.z, npc.heading, npc.angle, npc.range);
+      exposed = pointInCone(mom.x, mom.z, npc.pos.x, npc.pos.z, npc.heading, npc.angle, npc.range)
+        && this.losClear(npc.pos.x, npc.pos.z, mom.x, mom.z);
     }
 
     if (exposed) {

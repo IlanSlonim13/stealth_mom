@@ -30,7 +30,7 @@ export const level06: LevelSpec = {
   start: [2, 19],
   goal: { x: 4, z: 8, label: "The Armchair" },
   npcs: [
-    { type: "cat", x: 14, z: 10, patrol: [[14, 10], [24, 16], [8, 16]] },
+    { type: "cat", x: 14, z: 10, patrol: [[14, 10], [24, 16], [5, 15]] },
     { type: "dog", x: 20, z: 7 },
   ],
   tokens: [
