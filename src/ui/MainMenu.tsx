@@ -42,7 +42,8 @@ export function MainMenu() {
       }} />
 
       <div style={{
-        maxWidth: 420, margin: "0 auto", padding: "72px 22px 48px",
+        maxWidth: 420, margin: "0 auto",
+        padding: "calc(72px + env(safe-area-inset-top)) 22px calc(48px + env(safe-area-inset-bottom))",
         animation: "smMenuIn 0.8s ease-out", position: "relative",
       }}>
         <div style={{ textAlign: "center", marginBottom: 30 }}>

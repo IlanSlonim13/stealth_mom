@@ -1,4 +1,5 @@
 import { Howl, Howler } from "howler";
+import { SfxSynth } from "./SfxSynth";
 
 const SOUNDS = {
   "footstep-soft":   "/assets/audio/footstep-soft.mp3",
@@ -33,10 +34,12 @@ class AudioManagerClass {
 
   play(key: SoundKey) {
     const h = this.pool[key];
-    if (h) {
+    if (h && h.state() === "loaded") {
       h.play();
+    } else {
+      // real asset missing (404) or not preloaded — fall back to the synth
+      SfxSynth.play(key);
     }
-    // If not loaded yet (audio files are stubs), silently ignore
   }
 
   startAmbient() {

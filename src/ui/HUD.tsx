@@ -44,7 +44,8 @@ export function HUD({ gameRef }: { gameRef: RefObject<Game | null> }) {
 
       {/* top bar */}
       <div style={{
-        position: "absolute", top: 14, left: 0, right: 0, zIndex: 3,
+        position: "absolute", top: "calc(14px + env(safe-area-inset-top))",
+        left: 0, right: 0, zIndex: 3,
         display: "flex", justifyContent: "space-between", alignItems: "center",
         padding: "0 16px", pointerEvents: "none",
       }}>
@@ -77,7 +78,8 @@ export function HUD({ gameRef }: { gameRef: RefObject<Game | null> }) {
 
       {/* bottom action area */}
       <div style={{
-        position: "absolute", bottom: 22, left: 0, right: 0, zIndex: 3,
+        position: "absolute", bottom: "calc(22px + env(safe-area-inset-bottom))",
+        left: 0, right: 0, zIndex: 3,
         display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
         pointerEvents: "none",
       }}>

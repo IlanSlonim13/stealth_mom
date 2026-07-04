@@ -176,7 +176,8 @@ export class Game {
     this.keyLight.shadow.camera.right = ext;
     this.keyLight.shadow.camera.top = ext;
     this.keyLight.shadow.camera.bottom = -ext;
-    this.keyLight.shadow.mapSize.set(2048, 2048);
+    const shadowRes = Math.min(window.innerWidth, window.innerHeight) < 500 ? 1024 : 2048;
+    this.keyLight.shadow.mapSize.set(shadowRes, shadowRes);
     this.keyLight.shadow.bias = -0.0004;
     this.scene.add(this.keyLight);
     const fill = new THREE.DirectionalLight(t.sky[1], 0.22);

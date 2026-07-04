@@ -34,6 +34,7 @@ export function GameView() {
   const [bubbleFading, setBubbleFading] = useState(false);
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [quoteVisible, setQuoteVisible] = useState(false);
+  const [showHint, setShowHint] = useState(false);
   const [starsVisible, setStarsVisible] = useState(false);
   const [buttonsVisible, setButtonsVisible] = useState(false);
   const feedbackKey = useRef(0);
@@ -119,6 +120,13 @@ export function GameView() {
     return () => cancelAnimationFrame(id);
   }, [introActive]);
 
+  // level-1 first-run hint: appears if no tap within 4s after the intro
+  useEffect(() => {
+    if (introActive || level.id !== 1) { setShowHint(false); return; }
+    const t = setTimeout(() => setShowHint(true), 4000);
+    return () => clearTimeout(t);
+  }, [introActive, level.id]);
+
   // relax overlay reveal sequence
   useEffect(() => {
     if (!relaxActive) return;
@@ -148,6 +156,10 @@ export function GameView() {
           from { opacity:1; transform:translate(-50%,0); }
           to   { opacity:0; transform:translate(-50%,-46px); }
         }
+        @keyframes smHintPulse {
+          0%,100% { transform:scale(1); }
+          50%     { transform:scale(1.05); }
+        }
         @keyframes smStarPop {
           0%   { opacity:0; transform:scale(0.2) rotate(-30deg); }
           70%  { opacity:1; transform:scale(1.25) rotate(6deg); }
@@ -161,7 +173,29 @@ export function GameView() {
         background: "radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(30,16,40,0.22) 100%)",
       }} />
 
-      <div ref={mountRef} style={{ position: "absolute", inset: 0, touchAction: "none" }} />
+      <div
+        ref={mountRef}
+        onPointerDown={() => setShowHint(false)}
+        style={{ position: "absolute", inset: 0, touchAction: "none" }}
+      />
+
+      {/* first-run movement hint */}
+      {showHint && !relaxActive && !won && (
+        <div style={{
+          position: "absolute", bottom: "18%", left: 0, right: 0, zIndex: 2,
+          display: "flex", justifyContent: "center", pointerEvents: "none",
+        }}>
+          <div style={{
+            background: "rgba(255,252,246,0.94)", borderRadius: 20,
+            padding: "11px 24px", fontFamily: "Georgia, serif",
+            fontSize: 14, fontStyle: "italic", color: "#3A2A3E",
+            boxShadow: "0 6px 20px rgba(40,20,50,0.22)",
+            animation: "smHintPulse 1.2s ease-in-out infinite",
+          }}>
+            Tap anywhere to sneak over 🤫
+          </div>
+        </div>
+      )}
 
       {!introActive && !won && <HUD gameRef={gameRef} />}
 
@@ -265,7 +299,8 @@ export function GameView() {
           ))}
 
           <div style={{
-            position: "absolute", bottom: 36, left: 0, right: 0,
+            position: "absolute", bottom: "calc(36px + env(safe-area-inset-bottom))",
+            left: 0, right: 0,
             display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
             pointerEvents: "auto",
           }}>
