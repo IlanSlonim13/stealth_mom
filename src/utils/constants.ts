@@ -30,7 +30,7 @@ export const PICKUP_RANGE = 2.6;   // grid units to grab a decoy
 export const TOKEN_RANGE = 0.85;   // grid units to collect a token
 
 // ── Pacing ───────────────────────────────────────────────────────────────────
-export const CAUGHT_DELAY_MS = 750;
+export const CAUGHT_DELAY_MS = 1100;
 export const INTRO_HOLD_SECS = 1.1;
 export const INTRO_ZOOM_SECS = 2.1;
 export const WIN_ZOOM_SECS = 1.7;

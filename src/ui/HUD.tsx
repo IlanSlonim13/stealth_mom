@@ -35,6 +35,11 @@ export function HUD({ gameRef }: { gameRef: RefObject<Game | null> }) {
           0%,100% { transform:scale(1); }
           50%     { transform:scale(1.06); }
         }
+        @keyframes smStarPop {
+          0%   { opacity:0; transform:scale(0.2) rotate(-30deg); }
+          70%  { opacity:1; transform:scale(1.35) rotate(6deg); }
+          100% { opacity:1; transform:scale(1) rotate(0); }
+        }
       `}</style>
 
       {/* top bar */}
@@ -53,11 +58,12 @@ export function HUD({ gameRef }: { gameRef: RefObject<Game | null> }) {
           padding: "8px 14px",
         }}>
           {[0, 1, 2].map((i) => (
-            <span key={i} style={{
+            <span key={`${i}-${i < tokens}`} style={{
               fontSize: 14,
+              display: "inline-block",
               color: i < tokens ? "#FFD678" : "rgba(255,255,255,0.3)",
               filter: i < tokens ? "drop-shadow(0 0 5px rgba(255,214,120,0.9))" : "none",
-              transition: "all 0.3s",
+              animation: i < tokens ? "smStarPop 0.45s ease-out" : undefined,
             }}>
               ★
             </span>

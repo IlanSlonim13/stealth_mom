@@ -18,7 +18,7 @@ import {
   CAUGHT_DELAY_MS, INTRO_HOLD_SECS, INTRO_ZOOM_SECS, WIN_ZOOM_SECS,
   LURE_INVESTIGATE_SECS,
 } from "../utils/constants";
-import { clamp01, easeInOutCubic, easeOutQuad, damp, lerp } from "../utils/easing";
+import { clamp01, easeInOutCubic, easeOutQuad, easeOutBack, damp, lerp } from "../utils/easing";
 import { dist2d } from "../utils/coordinates";
 import { SceneryBuilder } from "./SceneryBuilder";
 import { buildFurniture } from "./FurnitureFactory";
@@ -49,6 +49,7 @@ export class Game {
 
   private state: GameState = "intro";
   private stateT = 0;
+  private caughtAnim = 0;
 
   private mom!: CharacterRig;
   private momPos = { x: 0, z: 0 };
@@ -371,7 +372,7 @@ export class Game {
     switch (this.state) {
       case "intro": this.updateIntro(); break;
       case "play": this.updatePlay(dt); break;
-      case "caught": this.npcs.update(dt, this.momPos, this.isHidden(), true); break;
+      case "caught": this.updateCaught(dt); break;
       case "winZoom": this.updateWinZoom(dt); break;
       case "relax": this.updateRelax(dt); break;
     }
@@ -494,6 +495,8 @@ export class Game {
         const pos = tk.group.position.clone().add(new THREE.Vector3(0, 0.2, 0));
         this.effects.sparkleBurst(pos, this.theme.accent, 12);
         this.effects.floatText(TOKEN_EMOJI[tk.type], "#FFFFFF", pos, 0.16);
+        this.effects.floatText("★", "#FFD678",
+          pos.clone().add(new THREE.Vector3(0, 0.15, 0)), 0.2);
         this.scene.remove(tk.group);
         disposeTree(tk.group);
         this.callbacks.onToken(this.tokensCollected);
@@ -601,10 +604,33 @@ export class Game {
     this.stateT = 0;
   }
 
+  /** Shock beat: arms fly up, small hop, camera punches in on Mom. */
+  private updateCaught(dt: number) {
+    this.npcs.update(dt, this.momPos, this.isHidden(), true);
+    this.caughtAnim += dt;
+    const k = Math.min(1, this.caughtAnim / 0.3);
+    const e = easeOutBack(k);
+    const m = this.mom;
+    m.lArm.rotation.z = -2.3 * e;
+    m.rArm.rotation.z = 2.3 * e;
+    m.lArm.rotation.x = m.rArm.rotation.x = -0.4 * e;
+    m.head.rotation.x = -0.3 * e;
+    m.group.position.y = FLOOR_TOP
+      + Math.max(0, Math.sin(Math.min(Math.PI, this.caughtAnim * 12))) * 0.05;
+    this.camTarget.lerp(
+      new THREE.Vector3(m.group.position.x, 0.1, m.group.position.z),
+      Math.min(1, dt * 5),
+    );
+    this.frust = damp(this.frust, this.frustFit * 0.55, 6, dt);
+  }
+
   private triggerCaught(by: NpcType | "trap") {
     if (this.state !== "play") return;
     this.setState("caught");
     this.momPath = null;
+    this.caughtAnim = 0;
+    this.effects.floatText("!!", "#F4525E",
+      this.mom.group.position.clone().add(new THREE.Vector3(0, 0.55, 0)), 0.2);
     if (by !== "trap") this.npcs.flashCaught(by);
     const sound = by === "dog" || by === "cat" ? "caught-dog"
       : by === "husband" ? "caught-husband" : "caught-mommy";
