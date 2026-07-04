@@ -327,22 +327,31 @@ const BUILDERS: Record<FurnitureShape, Builder> = {
     const grp = g();
     const w = lw * TS;
     const d = lh * TS;
-    grp.add(rbox(w - 0.02, 0.2, d - 0.02, "#F4F1E8", 0, 0.1, 0, 0.055));
+    const shell = "#F4F1E8";
+    // base slab + four rim walls so the water is actually visible inside
+    grp.add(rbox(w - 0.02, 0.1, d - 0.02, shell, 0, 0.05, 0, 0.03));
+    const rimH = 0.13;
+    const rimT = 0.05;
+    const rimY = 0.08 + rimH / 2;
+    grp.add(rbox(w - 0.02, rimH, rimT, shell, 0, rimY, -(d - 0.02) / 2 + rimT / 2, 0.02));
+    grp.add(rbox(w - 0.02, rimH, rimT, shell, 0, rimY, (d - 0.02) / 2 - rimT / 2, 0.02));
+    grp.add(rbox(rimT, rimH, d - 0.02, shell, -(w - 0.02) / 2 + rimT / 2, rimY, 0, 0.02));
+    grp.add(rbox(rimT, rimH, d - 0.02, shell, (w - 0.02) / 2 - rimT / 2, rimY, 0, 0.02));
     const water = new THREE.Mesh(
-      new THREE.BoxGeometry(w - 0.075, 0.02, d - 0.075),
+      new THREE.BoxGeometry(w - 0.02 - rimT * 2 + 0.015, 0.02, d - 0.02 - rimT * 2 + 0.015),
       new THREE.MeshLambertMaterial({ color: "#7EC4D6", transparent: true, opacity: 0.94 }),
     );
-    water.position.y = 0.185;
+    water.position.y = 0.16;
     grp.add(water);
     // foam patches on the water
     for (let i = 0; i < 5; i++) {
-      const foam = sphere(0.02 + (i % 3) * 0.007, "#F8FBFC",
-        (i / 4 - 0.5) * (w - 0.16), 0.19, ((i * 7 % 5) / 4 - 0.5) * (d - 0.2), 8);
+      const foam = sphere(0.018 + (i % 3) * 0.006, "#F8FBFC",
+        (i / 4 - 0.5) * (w - 0.2), 0.172, ((i * 7 % 5) / 4 - 0.5) * (d - 0.24), 8);
       foam.scale.y = 0.5;
       grp.add(foam);
     }
-    grp.add(cyl(0.011, 0.011, 0.12, t.metal, 0, 0.22, -d / 2 + 0.045, 8));
-    const spout = box(0.02, 0.02, 0.07, t.metal, 0, 0.27, -d / 2 + 0.08);
+    grp.add(cyl(0.011, 0.011, 0.1, t.metal, 0, 0.26, -d / 2 + 0.045, 8));
+    const spout = box(0.02, 0.02, 0.07, t.metal, 0, 0.3, -d / 2 + 0.08);
     grp.add(spout);
     // clawfoot feet
     for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {

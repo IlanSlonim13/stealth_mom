@@ -526,6 +526,7 @@ export class Game {
     const g = this.level.goal;
     if (dist2d(this.momPos.x, this.momPos.z, g.x, g.z) < 0.5) {
       this.momPath = null;
+      this.goalGroup.visible = false;
       AudioManager.play("success");
       AudioManager.stopAmbient();
       this.setState("winZoom");

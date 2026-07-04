@@ -36,6 +36,7 @@ export class RelaxDirector {
   private prop: PropKit | null = null;
   private useAnim = 0; // >0 while sip/bite animation plays
   private breathe = 0;
+  private phoneLight: THREE.PointLight | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -128,6 +129,8 @@ export class RelaxDirector {
           if (this.prop?.handItem) {
             this.prop.handItem.position.y = 0.02 + e * 0.13;
             this.prop.handItem.position.z = 0.04 - e * 0.055;
+            const pl = this.prop.handItem.getObjectByName("pageL");
+            if (pl) pl.rotation.z = 0.25 + e * 0.5; // page flip
           }
           m.head.rotation.x = -e * 0.35;
           m.rArm.rotation.x = this.armRest() - e * 0.9;
@@ -205,6 +208,33 @@ export class RelaxDirector {
         wear.rotation.x = -0.12;
       }
     }
+    // side items sit on a little stool beside the seat, not the floor
+    if (["wine", "teapot", "cheese", "chocolate"].includes(this.spec.prop)) {
+      kit.group.children.forEach((c) => (c.position.y += 0.13));
+      kit.group.add(cyl(0.07, 0.06, 0.13, this.theme.wood, 0, 0.065, 0, 12));
+    }
+    // soak scenes get a candle tray + rolled towel on the floor by the tub
+    if (this.spec.pose === "soak") {
+      const flameMat = liveMat("#F4A24E", {
+        emissive: new THREE.Color("#F47E3A"), emissiveIntensity: 0.9,
+      });
+      kit.group.add(cyl(0.075, 0.082, 0.014, this.theme.wood, -0.55, 0.007, 0.15, 16)); // tray
+      for (const [cx2, cz2] of [[-0.58, 0.12], [-0.51, 0.19]] as const) {
+        kit.group.add(cyl(0.016, 0.016, 0.024, "#F6EFDC", cx2, 0.026, cz2, 10));
+        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.007, 0.02, 6), flameMat);
+        flame.position.set(cx2, 0.048, cz2);
+        kit.group.add(flame);
+      }
+      const towel = cyl(0.028, 0.028, 0.09, "#F2EEE2", -0.56, 0.042, 0.24, 12);
+      towel.rotation.z = Math.PI / 2;
+      kit.group.add(towel);
+    }
+    // phone screen casts a cool glow on Mom's face
+    if (this.spec.prop === "phone" && this.mom.handAnchor) {
+      this.phoneLight = new THREE.PointLight("#9EC4F4", 1.4, 0.9);
+      this.phoneLight.position.set(0, 0.08, 0.06);
+      this.mom.handAnchor.add(this.phoneLight);
+    }
     // side items placed beside the seat, biased toward the camera
     kit.group.position.set(
       this.seatWorld.x + 0.18,
@@ -234,6 +264,10 @@ export class RelaxDirector {
   }
 
   destroy() {
+    if (this.phoneLight) {
+      this.phoneLight.parent?.remove(this.phoneLight);
+      this.phoneLight = null;
+    }
     if (this.prop) {
       this.prop.group.parent?.remove(this.prop.group);
       if (this.prop.handItem) this.prop.handItem.parent?.remove(this.prop.handItem);
@@ -286,8 +320,10 @@ function buildProp(prop: RelaxProp, t: Theme): PropKit {
       handItem = new THREE.Group();
       const left = box(0.075, 0.008, 0.1, "#F6F1E4", -0.036, 0.01, 0);
       left.rotation.z = 0.25;
+      left.name = "pageL";
       const right = box(0.075, 0.008, 0.1, "#F6F1E4", 0.036, 0.01, 0);
       right.rotation.z = -0.25;
+      right.name = "pageR";
       const cover = box(0.16, 0.006, 0.105, t.accent, 0, -0.002, 0);
       handItem.add(cover, left, right, hitbox(0, 0.02, 0, 0.09));
       break;
@@ -297,12 +333,12 @@ function buildProp(prop: RelaxProp, t: Theme): PropKit {
       duck.add(sphere(0.032, "#F4C93A", 0, 0.03, 0, 12));
       duck.add(sphere(0.02, "#F4C93A", 0, 0.055, 0.025, 10));
       duck.add(box(0.014, 0.008, 0.014, "#E8823A", 0, 0.052, 0.045));
-      duck.position.set(-0.28, 0.13, 0.1);
+      duck.position.set(-0.28, 0.16, 0.1);
       group.add(duck, hitbox(-0.28, 0.16, 0.1, 0.1));
-      // foam blobs
+      // foam blobs on the water
       for (let i = 0; i < 6; i++) {
         const f = sphere(0.02 + Math.random() * 0.015, "#F8FBFC",
-          -0.2 - Math.random() * 0.2, 0.14, -0.05 + Math.random() * 0.25, 8);
+          -0.2 - Math.random() * 0.2, 0.17, -0.05 + Math.random() * 0.25, 8);
         group.add(f);
       }
       break;
